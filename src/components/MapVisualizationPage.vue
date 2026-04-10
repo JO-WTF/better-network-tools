@@ -167,55 +167,51 @@
           </button>
           <button type="button" class="secondary small add-field-btn" @click="addColumnField">新增字段</button>
         </div>
-        <div class="pager-row">
-          <button class="secondary small" type="button" :disabled="currentPage <= 1" @click="changePage(currentPage - 1)">上一页</button>
-          <span>第 {{ currentPage }} / {{ totalPages }} 页</span>
-          <button class="secondary small" type="button" :disabled="currentPage >= totalPages" @click="changePage(currentPage + 1)">下一页</button>
-        </div>
       </div>
 
       <div v-if="activeDataset" class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>GID</th>
-              <th>GEOMETRY</th>
-              <th v-for="col in activeDataset.extraColumns" :key="col">{{ col }}</th>
-              <th>定位</th>
-              <th>删除</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="row in pagedRows"
-              :key="row.featureKey"
-              :ref="bindRowRef(row.featureKey)"
-              :class="{ 'table-row-active': selectedFeatureKey === row.featureKey }"
-            >
-              <td>{{ row.gid }}</td>
-              <td>
-                <span class="geometry-badge">{{ row.geometryType }}</span>
-              </td>
-              <td v-for="col in activeDataset.extraColumns" :key="col">
-                <template v-if="isEditingCell(row.featureKey, col)">
-                  <input
-                    class="cell-editor"
-                    :value="editingValue"
-                    @input="editingValue = $event.target.value"
-                    @blur="handleEditorBlur(row, col)"
-                    @keydown.enter.prevent="saveEditCell(row, col)"
-                    @keydown.esc.prevent="handleEditorEsc"
-                  />
-                </template>
-                <button v-else class="cell-value-btn" type="button" @click="startEditCell(row, col)">
-                  {{ row.properties[col] ?? '-' }}
-                </button>
-              </td>
-              <td><button class="secondary small" type="button" @click="locateFeature(row)">定位</button></td>
-              <td><button class="secondary small" type="button" @click="removeFeature(row.featureKey)">删除</button></td>
-            </tr>
-          </tbody>
-        </table>
+        <a-table
+          :dataSource="filteredRows"
+          :columns="tableColumns"
+          :rowKey="record => record.featureKey"
+          :rowClassName="record => record.featureKey === selectedFeatureKey ? 'table-row-active' : ''"
+          v-model:current="currentPage"
+          v-model:pageSize="pageSize"
+          :pagination="{ 
+            showSizeChanger: true, 
+            showTotal: total => `共 ${total} 条`
+          }"
+          size="small"
+          bordered
+          :scroll="{ x: 'max-content' }"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'geometryType'">
+              <span class="geometry-badge">{{ record.geometryType }}</span>
+            </template>
+            <template v-else-if="activeDataset.extraColumns.includes(column.key)">
+              <template v-if="isEditingCell(record.featureKey, column.key)">
+                <input
+                  class="cell-editor"
+                  :value="editingValue"
+                  @input="editingValue = $event.target.value"
+                  @blur="handleEditorBlur(record, column.key)"
+                  @keydown.enter.prevent="saveEditCell(record, column.key)"
+                  @keydown.esc.prevent="handleEditorEsc"
+                />
+              </template>
+              <button v-else class="cell-value-btn" type="button" @click="startEditCell(record, column.key)">
+                {{ record.properties[column.key] ?? '-' }}
+              </button>
+            </template>
+            <template v-else-if="column.key === 'actions'">
+              <div style="display: flex; gap: 8px;">
+                <button class="secondary small" type="button" @click="locateFeature(record)">定位</button>
+                <button class="secondary small" type="button" @click="removeFeature(record.featureKey)">删除</button>
+              </div>
+            </template>
+          </template>
+        </a-table>
       </div>
     </div>
     
@@ -263,7 +259,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import mapboxgl from "mapbox-gl";
 import * as XLSX from "xlsx";
-import { Eye, EyeOff, Settings, MapPin, Minus, Square, X, Plus } from "lucide-vue-next";
+import { Eye, EyeOff, Settings, MapPin, Minus, Square, X, Plus, Filter, FilterX } from "lucide-vue-next";
 
 const props = defineProps({
   mapApiKey: { type: String, default: "" },
@@ -282,7 +278,7 @@ const pasteInput = ref("");
 const isProcessing = ref(false);
 const dataFileInput = ref(null);
 
-const datasets = ref([{ id: 1, name: "数据集 1", rows: [], extraColumns: [], visible: true }]);
+const datasets = ref([{ id: 1, name: "数据集 1", rows: [], extraColumns: [], visible: true, filters: {} }]);
 const datasetStyles = ref({ 1: createDefaultDatasetStyle() });
 const styleConfigDatasetId = ref(null);
 const styleDraft = ref(createDefaultDatasetStyle());
@@ -290,7 +286,7 @@ const activeDatasetId = ref(1);
 const selectedFeatureKey = ref("");
 const geometryFilter = ref("all");
 const currentPage = ref(1);
-const pageSize = 20;
+const pageSize = ref(20);
 const editingCell = ref({ featureKey: "", column: "" });
 const editingValue = ref("");
 const skipBlurSave = ref(false);
@@ -324,17 +320,60 @@ const sortedRows = computed(() => {
   return [...activeDataset.value.rows].sort((a, b) => Number(a.gid) - Number(b.gid));
 });
 
-const filteredRows = computed(() =>
-  geometryFilter.value === "all"
-    ? sortedRows.value
-    : sortedRows.value.filter((row) => resolveGeometryGroup(row.geometryType) === geometryFilter.value)
-);
+const filteredRows = computed(() => {
+  if (!activeDataset.value) return [];
+  let rows = sortedRows.value;
+  
+  if (geometryFilter.value !== "all") {
+    rows = rows.filter((row) => resolveGeometryGroup(row.geometryType) === geometryFilter.value);
+  }
+  
+  const filters = activeDataset.value.filters || {};
+  const activeCols = Object.keys(filters).filter(col => filters[col] && filters[col].trim() !== '');
+  
+  if (activeCols.length > 0) {
+    rows = rows.filter(row => {
+      return activeCols.every(col => {
+        const cellValue = String(row.properties[col] ?? '').toLowerCase();
+        const filterValue = filters[col].trim().toLowerCase();
+        return cellValue.includes(filterValue);
+      });
+    });
+  }
+  
+  return rows;
+});
 
-const totalPages = computed(() => Math.max(Math.ceil(filteredRows.value.length / pageSize), 1));
+const tableColumns = computed(() => {
+  if (!activeDataset.value) return [];
+  
+  const baseCols = [
+    { title: 'GID', dataIndex: 'gid', key: 'gid', width: 80 },
+    { title: 'GEOMETRY', dataIndex: 'geometryType', key: 'geometryType', width: 120 },
+  ];
 
-const pagedRows = computed(() => {
-  const start = (currentPage.value - 1) * pageSize;
-  return filteredRows.value.slice(start, start + pageSize);
+  const extraCols = activeDataset.value.extraColumns.map(col => {
+    const uniqueValues = [...new Set(activeDataset.value.rows.map(r => r.properties[col]))]
+      .filter(v => v !== null && v !== undefined && String(v).trim() !== '');
+    
+    const filters = uniqueValues.map(v => ({ text: String(v), value: String(v) }));
+
+    return {
+      title: col,
+      dataIndex: ['properties', col],
+      key: col,
+      filters: filters.length > 0 ? filters : undefined,
+      onFilter: (value, record) => String(record.properties[col]) === value,
+      filterSearch: true,
+      ellipsis: true,
+    };
+  });
+
+  const actionCols = [
+    { title: '操作', key: 'actions', width: 120, fixed: 'right' }
+  ];
+
+  return [...baseCols, ...extraCols, ...actionCols];
 });
 
 const bindRowRef = (featureKey) => (el) => {
@@ -476,11 +515,6 @@ const ensureValidGeometryFilter = () => {
 
 const setGeometryFilter = (group) => {
   geometryFilter.value = group;
-  currentPage.value = 1;
-};
-
-const changePage = (page) => {
-  currentPage.value = Math.min(Math.max(page, 1), totalPages.value);
 };
 
 const isEditingCell = (featureKey, column) =>
@@ -541,7 +575,7 @@ const addColumnField = () => {
 const ensureSelectedRowVisible = (featureKey) => {
   const rowIndex = filteredRows.value.findIndex((row) => row.featureKey === featureKey);
   if (rowIndex === -1) return false;
-  currentPage.value = Math.floor(rowIndex / pageSize) + 1;
+  currentPage.value = Math.floor(rowIndex / pageSize.value) + 1;
   return true;
 };
 
@@ -679,6 +713,9 @@ const ensureMap = () => {
     center: [116.397, 39.908],
     zoom: 4,
   });
+
+  map.addControl(new mapboxgl.NavigationControl(), "top-right");
+  map.addControl(new mapboxgl.FullscreenControl(), "top-right");
 
   map.on("load", () => {
     map.setProjection("mercator");
@@ -1025,10 +1062,18 @@ const appendRowsFromFeatures = (features) => {
     const gid = start + index;
     const featureKey = `d${activeDataset.value.id}-f${featureCounter}`;
     featureCounter += 1;
+    
+    // Sanitize feature to avoid circular structures (especially from Mapbox queryRenderedFeatures)
+    const sanitizedFeature = {
+      type: feature.type || "Feature",
+      geometry: feature.geometry,
+      properties: { ...(feature.properties || {}) }
+    };
+
     const normalizedFeature = {
-      ...feature,
+      ...sanitizedFeature,
       properties: {
-        ...(feature.properties || {}),
+        ...sanitizedFeature.properties,
         __gid: gid,
         __datasetId: activeDataset.value.id,
         __featureKey: featureKey,
@@ -1081,7 +1126,7 @@ const refreshSource = () => {
 
 const addDataset = () => {
   const nextId = Math.max(...datasets.value.map((dataset) => dataset.id)) + 1;
-  datasets.value.push({ id: nextId, name: `数据集 ${nextId}`, rows: [], extraColumns: [], visible: true });
+  datasets.value.push({ id: nextId, name: `数据集 ${nextId}`, rows: [], extraColumns: [], visible: true, filters: {} });
   datasetStyles.value = { ...datasetStyles.value, [nextId]: createDefaultDatasetStyle() };
   activeDatasetId.value = nextId;
 };
@@ -1321,12 +1366,6 @@ watch(activeDatasetId, () => {
   cancelEditCell();
   ensureValidGeometryFilter();
   currentPage.value = 1;
-});
-
-watch(totalPages, (value) => {
-  if (currentPage.value > value) {
-    currentPage.value = value;
-  }
 });
 
 

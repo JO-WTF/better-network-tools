@@ -749,22 +749,12 @@ button:not(:disabled):hover {
 
 .table-wrap {
   overflow: auto;
-  border: 1px solid #e2e8f0;
   border-radius: 10px;
 }
 
-.table-wrap table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.table-wrap th,
-.table-wrap td {
-  padding: 8px;
-  border-bottom: 1px solid #e2e8f0;
-  text-align: left;
-  white-space: nowrap;
+.table-row-active > td {
+  background-color: #fff7e6 !important;
+  border-bottom-color: #ffd591 !important;
 }
 
 .geometry-badge {
@@ -780,13 +770,7 @@ button:not(:disabled):hover {
   font-size: 12px;
 }
 
-.table-row-active {
-  background: #fff7e6;
-}
 
-.table-row-active td {
-  border-bottom-color: #ffd591;
-}
 
 
 .dataset-tab-item {
