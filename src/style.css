@@ -95,7 +95,6 @@ h1 {
 .settings-button svg {
   width: 18px;
   height: 18px;
-  fill: #475569;
 }
 
 .layout {
@@ -333,9 +332,9 @@ button:not(:disabled):hover {
 }
 
 .icon-button {
-  border-radius: 12px;
-  width: 36px;
-  height: 36px;
+  border-radius: 8px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   border: 1px solid #cbd5f5;
   background: #ffffff;
@@ -349,10 +348,15 @@ button:not(:disabled):hover {
   animation: mock-pulse 0.5s ease;
 }
 
-.icon-button svg {
-  width: 18px;
-  height: 18px;
-  fill: currentColor;
+.icon-button svg,
+.draw-fab svg {
+  width: 18px !important;
+  height: 18px !important;
+  display: block;
+  stroke: currentColor !important;
+  stroke-width: 2.5px !important;
+  fill: none !important;
+  overflow: visible;
 }
 
 @keyframes mock-pulse {
@@ -733,6 +737,9 @@ button:not(:disabled):hover {
   font-size: 12px;
   line-height: 1;
   padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .dataset-tabs {
@@ -795,6 +802,9 @@ button:not(:disabled):hover {
   border: 1px solid #e2e8f0;
   background: #fff;
   color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .add-dataset {
@@ -805,6 +815,8 @@ button:not(:disabled):hover {
   border-radius: 999px;
   padding: 6px 12px;
   font-size: 13px;
+  display: flex;
+  align-items: center;
 }
 
 .add-dataset:hover {
@@ -885,27 +897,35 @@ button:not(:disabled):hover {
 
 .draw-fab-group {
   position: absolute;
-  right: 14px;
+  left: 14px;
   top: 14px;
-  z-index: 7;
+  z-index: 9999;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+  pointer-events: auto;
 }
 
 .draw-fab {
-  width: 34px;
+  width: 48px;
   height: 34px;
   border: 1px solid #dbeafe;
   background: #ffffff;
   color: #1e293b;
   border-radius: 8px;
   box-shadow: 0 6px 16px rgba(15, 23, 42, 0.12);
-  font-size: 15px;
+  font-size: 12px;
   line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 4px;
+  padding: 0 8px;
+}
+
+.draw-label {
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .draw-fab.active {
@@ -931,6 +951,9 @@ button:not(:disabled):hover {
   border: 1px solid #e8edf7;
   background: #fff;
   color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .style-modal {

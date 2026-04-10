@@ -15,7 +15,8 @@
           title="绘制点"
           @click="toggleDrawMode('point')"
         >
-          ●
+          <MapPin :size="18" :stroke-width="2.5" />
+          <span class="draw-label">点</span>
         </button>
         <button
           class="draw-fab"
@@ -25,7 +26,8 @@
           title="绘制线"
           @click="toggleDrawMode('line')"
         >
-          ／
+          <Minus :size="18" :stroke-width="2.5" />
+          <span class="draw-label">线</span>
         </button>
         <button
           class="draw-fab"
@@ -35,7 +37,8 @@
           title="绘制面"
           @click="toggleDrawMode('polygon')"
         >
-          ⬠
+          <Square :size="18" :stroke-width="2.5" />
+          <span class="draw-label">面</span>
         </button>
       </div>
     </div>
@@ -51,13 +54,22 @@
             {{ dataset.name }} ({{ dataset.rows.length }})
           </button>
           <button
+            class="icon-button dataset-visibility"
+            type="button"
+            @click="toggleDatasetVisibility(dataset.id)"
+            :title="dataset.visible !== false ? '隐藏图层' : '显示图层'"
+          >
+            <Eye v-if="dataset.visible !== false" :size="18" />
+            <EyeOff v-else :size="18" />
+          </button>
+          <button
             class="icon-button dataset-style"
             type="button"
             @click="openStyleConfig(dataset.id)"
             aria-label="数据集样式设置"
             title="样式设置"
           >
-            ⚙
+            <Settings :size="18" />
           </button>
           <button
             v-if="dataset.id === activeDatasetId"
@@ -67,10 +79,13 @@
             @click="removeDataset(dataset.id)"
             aria-label="删除当前数据集"
           >
-            ×
+            <X :size="18" />
           </button>
         </div>
-        <button class="add-dataset" type="button" @click="addDataset">+ 添加数据集</button>
+        <button class="add-dataset" type="button" @click="addDataset">
+          <Plus :size="16" style="margin-right: 4px" />
+          添加数据集
+        </button>
       </div>
 
       <div class="dataset-toolbar">
@@ -87,7 +102,7 @@
           ref="dataFileInput"
           class="visually-hidden"
           type="file"
-          accept=".geojson,.json,.csv"
+          accept=".geojson,.json,.csv,.xlsx,.xls"
           :disabled="isProcessing"
           @change="handleFileUpload"
         />
@@ -109,7 +124,7 @@
             title="清空"
             @click="clearPasteInput"
           >
-            ×
+            <X :size="16" />
           </button>
         </div>
         <button class="primary" type="button" @click="handlePasteImport" :disabled="isProcessing">解析并导入</button>
@@ -208,7 +223,9 @@
       <div class="style-modal" role="dialog" aria-modal="true" aria-label="数据集样式设置">
         <div class="style-modal-header">
           <h3>数据集样式配置（{{ datasets.find((d) => d.id === styleConfigDatasetId)?.name }}）</h3>
-          <button class="icon-button" type="button" @click="closeStyleConfig">✕</button>
+          <button class="icon-button" type="button" @click="closeStyleConfig">
+            <X :size="18" />
+          </button>
         </div>
         <div class="style-columns">
           <section class="style-column">
@@ -245,6 +262,8 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import mapboxgl from "mapbox-gl";
+import * as XLSX from "xlsx";
+import { Eye, EyeOff, Settings, MapPin, Minus, Square, X, Plus } from "lucide-vue-next";
 
 const props = defineProps({
   mapApiKey: { type: String, default: "" },
@@ -263,7 +282,7 @@ const pasteInput = ref("");
 const isProcessing = ref(false);
 const dataFileInput = ref(null);
 
-const datasets = ref([{ id: 1, name: "数据集 1", rows: [], extraColumns: [] }]);
+const datasets = ref([{ id: 1, name: "数据集 1", rows: [], extraColumns: [], visible: true }]);
 const datasetStyles = ref({ 1: createDefaultDatasetStyle() });
 const styleConfigDatasetId = ref(null);
 const styleDraft = ref(createDefaultDatasetStyle());
@@ -1042,15 +1061,19 @@ const appendRowsFromFeatures = (features) => {
 
 const refreshSource = () => {
   if (!mapReady.value || !map) return;
-  const allFeatures = datasets.value.flatMap((dataset) => dataset.rows.map((row) => row.feature));
+  const allFeatures = datasets.value
+    .filter((d) => d.visible !== false)
+    .flatMap((dataset) => dataset.rows.map((row) => row.feature));
   map.getSource("viz-source")?.setData({ type: "FeatureCollection", features: allFeatures });
 
   datasets.value.forEach((dataset) => {
     ensureDatasetPointLayer(dataset.id);
     const sourceId = getDatasetPointSourceId(dataset.id);
-    const pointFeatures = dataset.rows
-      .map((row) => row.feature)
-      .filter((feature) => feature?.geometry?.type === "Point");
+    const pointFeatures = dataset.visible !== false
+      ? dataset.rows
+          .map((row) => row.feature)
+          .filter((feature) => feature?.geometry?.type === "Point")
+      : [];
     map.getSource(sourceId)?.setData({ type: "FeatureCollection", features: pointFeatures });
   });
   applySharedGeometryStyles();
@@ -1058,9 +1081,17 @@ const refreshSource = () => {
 
 const addDataset = () => {
   const nextId = Math.max(...datasets.value.map((dataset) => dataset.id)) + 1;
-  datasets.value.push({ id: nextId, name: `数据集 ${nextId}`, rows: [], extraColumns: [] });
+  datasets.value.push({ id: nextId, name: `数据集 ${nextId}`, rows: [], extraColumns: [], visible: true });
   datasetStyles.value = { ...datasetStyles.value, [nextId]: createDefaultDatasetStyle() };
   activeDatasetId.value = nextId;
+};
+
+const toggleDatasetVisibility = (datasetId) => {
+  const dataset = datasets.value.find((d) => d.id === datasetId);
+  if (dataset) {
+    dataset.visible = dataset.visible === false ? true : false;
+    refreshSource();
+  }
 };
 
 const removeDataset = (datasetId) => {
@@ -1106,9 +1137,40 @@ const triggerFilePicker = () => {
 const handleFileUpload = async (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
-  const text = await file.text();
-  await importFeaturesWithMask(text);
-  event.target.value = "";
+
+  isProcessing.value = true;
+  try {
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    let features = [];
+
+    if (extension === "xlsx" || extension === "xls") {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(new Uint8Array(data), { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet);
+      features = rows
+        .map((row) => {
+          const geometry = detectGeometryFromRow(row);
+          if (!geometry) return null;
+          return { type: "Feature", geometry, properties: row };
+        })
+        .filter(Boolean);
+    } else {
+      const text = await file.text();
+      features = parseContentToFeatures(text);
+    }
+
+    if (features.length > 0) {
+      appendRowsFromFeatures(features);
+      await waitForMapFlush();
+    }
+  } catch (error) {
+    console.error("文件上传解析失败:", error);
+    alert("文件解析失败，请检查文件格式是否正确。");
+  } finally {
+    isProcessing.value = false;
+    event.target.value = "";
+  }
 };
 
 const handlePasteImport = async () => {
