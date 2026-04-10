@@ -10,7 +10,7 @@
 
     <MapVisualizationPage v-if="mode === 'visualize'" :map-api-key="mapApiKey" />
 
-    <main v-else class="layout">
+    <main v-else class="layout" :class="{ 'no-map': isInitialStateLoaded && !mapApiKey }">
       <section class="panel">
         <div class="card">
           <div class="card-header">
@@ -197,22 +197,23 @@
         <LogCard :logs="logs" />
       </section>
 
-      <section class="map-panel">
+      <section v-if="isInitialStateLoaded" class="map-panel">
         <div class="map-wrapper">
-          <div class="map-toolbar">
+          <div v-if="mapApiKey" class="map-toolbar">
             <label class="map-live-toggle">
               <input v-model="mapRealtimeUpdate" type="checkbox" />
               <span>地图实时更新</span>
             </label>
           </div>
           <div ref="mapContainer" class="map"></div>
-          <div v-if="!mapLoaded" class="map-config">
-            <h3>地图配置</h3>
-            <p class="hint">请在设置中填写 Mapbox API Key。</p>
-            <button class="secondary" @click="showSettings = true">打开设置</button>
+          <div v-if="mapApiKey && !mapLoaded" class="map-loading-overlay">
+            <div class="loading-spinner"></div>
+            <p>正在加载地图...</p>
           </div>
-          <div v-if="!mapLoaded" class="map-empty">
-            <p>请在设置中填写 Mapbox API Key 以加载地图。</p>
+          <div v-if="!mapApiKey" class="map-config">
+            <h3>地图配置</h3>
+            <p class="hint">请在设置中填写 Mapbox API Key 以启用地图面板。</p>
+            <button class="secondary" @click="showSettings = true">打开设置</button>
           </div>
         </div>
       </section>
@@ -335,6 +336,7 @@ const {
   dropzoneFlash,
   mockAnimating,
   mapRealtimeUpdate,
+  isInitialStateLoaded,
   mode,
   modeOptions,
   canStart,

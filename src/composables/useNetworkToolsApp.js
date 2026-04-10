@@ -70,6 +70,7 @@ const customSocket = ref(null);
 const mapApiKey = ref("");
 const mapRealtimeUpdate = ref(true);
 const mode = ref("visualize");
+const isInitialStateLoaded = ref(false);
 
 const modeOptions = [
   { value: "visualize", label: "地图可视化" },
@@ -163,6 +164,7 @@ const loadInitialState = () => {
   if (savedKey) {
     mapApiKey.value = savedKey;
   }
+  isInitialStateLoaded.value = true;
 };
 
 loadInitialState();
@@ -2507,6 +2509,14 @@ onMounted(() => {
   }
 });
 
+watch(mapApiKey, (value) => {
+  if (value) {
+    localStorage.setItem(storageKeys.mapboxMap, value);
+  } else {
+    localStorage.removeItem(storageKeys.mapboxMap);
+  }
+});
+
 watch(provider, (value) => {
   localStorage.setItem(storageKeys.provider, value);
   if (value === "custom") {
@@ -2734,6 +2744,7 @@ watch(mode, (value) => {
     dropzoneFlash,
     mockAnimating,
     mapRealtimeUpdate,
+    isInitialStateLoaded,
     points,
     routeLines,
     mode,

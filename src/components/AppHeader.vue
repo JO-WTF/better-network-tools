@@ -20,17 +20,15 @@
         </button>
       </div>
       <button class="icon-button settings-button" type="button" @click="$emit('open-settings')" aria-label="打开设置">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path
-            d="M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7Zm8.94 3.5a7.2 7.2 0 0 0-.12-1.3l2.02-1.58-2-3.46-2.44.78a7.53 7.53 0 0 0-2.26-1.3l-.5-2.5h-4l-.5 2.5a7.53 7.53 0 0 0-2.26 1.3l-2.44-.78-2 3.46 2.02 1.58a7.2 7.2 0 0 0 0 2.6L2.44 13.6l2 3.46 2.44-.78a7.53 7.53 0 0 0 2.26 1.3l.5 2.5h4l.5-2.5a7.53 7.53 0 0 0 2.26-1.3l2.44.78 2-3.46-2.02-1.58c.08-.42.12-.86.12-1.3Z"
-          />
-        </svg>
+        <Settings :size="20" />
       </button>
     </div>
   </header>
 </template>
 
 <script setup>
+import { Settings } from "lucide-vue-next";
+
 defineProps({
   headerTitle: { type: String, required: true },
   mode: { type: String, required: true },

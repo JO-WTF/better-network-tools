@@ -2,8 +2,10 @@
   <section class="visual-page">
     <div class="visual-top">
       <div ref="mapContainer" class="visual-map"></div>
-      <div v-if="!mapApiKey && !mapReady" class="visual-map-empty">请输入设置中的 Mapbox 地图 Key 以启用可视化。</div>
-      <div v-else-if="mapApiKey && !mapReady" class="visual-map-empty">正在加载地图资源...</div>
+      <template v-if="isLoaded">
+        <div v-if="!mapApiKey && !mapReady" class="visual-map-empty">请输入设置中的 Mapbox 地图 Key 以启用可视化。</div>
+        <div v-else-if="mapApiKey && !mapReady" class="visual-map-empty">正在加载地图资源...</div>
+      </template>
       <div v-if="isProcessing" class="visual-map-mask">
         <div class="mask-card">正在处理数据并加载地图要素...</div>
       </div>
@@ -304,6 +306,7 @@ const createDefaultDatasetStyle = () => ({
 
 const mapContainer = ref(null);
 const mapReady = ref(false);
+const isLoaded = ref(false);
 const showPaste = ref(false);
 const pasteInput = ref("");
 const isProcessing = ref(false);
@@ -1430,6 +1433,7 @@ const loadState = () => {
       console.error("Failed to load state from localStorage", e);
     }
   }
+  isLoaded.value = true;
 };
 
 loadState();
