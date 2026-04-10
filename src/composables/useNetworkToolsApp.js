@@ -2,6 +2,34 @@ import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
 import mapboxgl from "mapbox-gl";
 import * as XLSX from "xlsx";
 
+const storageKeys = {
+  provider: "geocode_provider",
+  mapboxGeocode: "mapbox_geocode_api_key",
+  hereGeocode: "here_geocode_api_key",
+  mapboxMap: "mapbox_map_api_key",
+  customAppId: "custom_app_id",
+  customCredential: "custom_credential",
+  customTokenUrl: "custom_token_url",
+  customGeocodeUrl: "custom_geocode_url",
+  customRouteUrl: "custom_route_url",
+  customWebSocketUrl: "custom_websocket_url",
+  columnName: "geocode_column_name",
+  latColumnName: "reverse_lat_column_name",
+  lngColumnName: "reverse_lng_column_name",
+  reverseColumnMode: "reverse_column_mode",
+  reverseColumnName: "reverse_column_name",
+  reverseDelimiterMode: "reverse_delimiter_mode",
+  reverseDelimiter: "reverse_delimiter",
+  startColumnName: "route_start_column_name",
+  endColumnName: "route_end_column_name",
+  routeInputMode: "route_input_mode",
+  mode: "geocode_mode",
+  mapRealtimeUpdate: "map_realtime_update",
+};
+
+const getProviderStorageKey = (currentProvider) =>
+  currentProvider === "mapbox" ? storageKeys.mapboxGeocode : storageKeys.hereGeocode;
+
 export function useNetworkToolsApp() {
 
 const headers = ref([]);
@@ -40,6 +68,105 @@ const defaultWebSocketUrl = () => {
 const customWebSocketUrl = ref(defaultWebSocketUrl());
 const customSocket = ref(null);
 const mapApiKey = ref("");
+const mapRealtimeUpdate = ref(true);
+const mode = ref("visualize");
+
+const modeOptions = [
+  { value: "visualize", label: "地图可视化" },
+  { value: "geocode", label: "地址编码" },
+  { value: "reverse", label: "经纬度解码" },
+  { value: "route", label: "导航距离计算" },
+];
+
+const loadInitialState = () => {
+  if (typeof window === "undefined") return;
+
+  const savedMode = localStorage.getItem(storageKeys.mode);
+  if (savedMode) {
+    mode.value = savedMode;
+  } else {
+    mode.value = "visualize";
+  }
+  
+  const savedProvider = localStorage.getItem(storageKeys.provider);
+  if (savedProvider === "mapbox" || savedProvider === "here" || savedProvider === "custom") {
+    provider.value = savedProvider;
+  }
+  const savedAppId = localStorage.getItem(storageKeys.customAppId);
+  const savedCredential = localStorage.getItem(storageKeys.customCredential);
+  const savedTokenUrl = localStorage.getItem(storageKeys.customTokenUrl);
+  const savedGeocodeUrl = localStorage.getItem(storageKeys.customGeocodeUrl);
+  const savedRouteUrl = localStorage.getItem(storageKeys.customRouteUrl);
+  const savedWebSocketUrl = localStorage.getItem(storageKeys.customWebSocketUrl);
+  if (savedAppId) customAppId.value = savedAppId;
+  if (savedCredential) customCredential.value = savedCredential;
+  if (savedTokenUrl) customTokenUrl.value = savedTokenUrl;
+  if (savedGeocodeUrl) customGeocodeUrl.value = savedGeocodeUrl;
+  if (savedRouteUrl) customRouteUrl.value = savedRouteUrl;
+  if (savedWebSocketUrl) customWebSocketUrl.value = savedWebSocketUrl;
+
+  if (provider.value !== "custom") {
+    const savedProviderKey = localStorage.getItem(getProviderStorageKey(provider.value));
+    if (savedProviderKey) {
+      providerApiKey.value = savedProviderKey;
+    }
+  }
+  const savedMapboxKey = localStorage.getItem(storageKeys.mapboxGeocode);
+  if (savedMapboxKey) {
+    mapboxGeocodeApiKey.value = savedMapboxKey;
+  }
+  const savedHereKey = localStorage.getItem(storageKeys.hereGeocode);
+  if (savedHereKey) {
+    hereGeocodeApiKey.value = savedHereKey;
+  }
+  if (provider.value !== "custom") {
+    providerApiKey.value =
+      provider.value === "mapbox" ? mapboxGeocodeApiKey.value : hereGeocodeApiKey.value;
+  }
+  const savedReverseMode = localStorage.getItem(storageKeys.reverseColumnMode);
+  if (savedReverseMode === "single" || savedReverseMode === "separate") {
+    reverseColumnMode.value = savedReverseMode;
+  }
+  const savedReverseColumn = localStorage.getItem(storageKeys.reverseColumnName);
+  if (savedReverseColumn) {
+    reverseColumnName.value = savedReverseColumn;
+  }
+  const savedDelimiterMode = localStorage.getItem(storageKeys.reverseDelimiterMode);
+  if (savedDelimiterMode === "auto" || savedDelimiterMode === "custom") {
+    reverseDelimiterMode.value = savedDelimiterMode;
+  }
+  const savedDelimiter = localStorage.getItem(storageKeys.reverseDelimiter);
+  if (savedDelimiter) {
+    reverseDelimiter.value = savedDelimiter;
+  }
+  const savedRouteInputMode = localStorage.getItem(storageKeys.routeInputMode);
+  if (savedRouteInputMode === "address" || savedRouteInputMode === "coordinate") {
+    routeInputMode.value = savedRouteInputMode;
+  }
+
+  const savedColumnName = localStorage.getItem(storageKeys.columnName);
+  if (savedColumnName) columnName.value = savedColumnName;
+  const savedLatColumnName = localStorage.getItem(storageKeys.latColumnName);
+  if (savedLatColumnName) latColumnName.value = savedLatColumnName;
+  const savedLngColumnName = localStorage.getItem(storageKeys.lngColumnName);
+  if (savedLngColumnName) lngColumnName.value = savedLngColumnName;
+  const savedStartColumnName = localStorage.getItem(storageKeys.startColumnName);
+  if (savedStartColumnName) startColumnName.value = savedStartColumnName;
+  const savedEndColumnName = localStorage.getItem(storageKeys.endColumnName);
+  if (savedEndColumnName) endColumnName.value = savedEndColumnName;
+
+  const savedMapRealtimeUpdate = localStorage.getItem(storageKeys.mapRealtimeUpdate);
+  if (savedMapRealtimeUpdate === "0") {
+    mapRealtimeUpdate.value = false;
+  }
+  const savedKey = localStorage.getItem(storageKeys.mapboxMap);
+  if (savedKey) {
+    mapApiKey.value = savedKey;
+  }
+};
+
+loadInitialState();
+
 const logs = ref([]);
 const showSettings = ref(false);
 const settingsNotice = ref("");
@@ -140,7 +267,6 @@ const mapLoaded = ref(false);
 const isDragging = ref(false);
 const dropzoneFlash = ref(false);
 const mockAnimating = ref(false);
-const mapRealtimeUpdate = ref(true);
 const geocodeState = reactive({
   total: 0,
   processed: 0,
@@ -149,14 +275,6 @@ const geocodeState = reactive({
 });
 const points = ref([]);
 const routeLines = ref([]);
-const mode = ref("visualize");
-
-const modeOptions = [
-  { value: "visualize", label: "地图可视化" },
-  { value: "geocode", label: "地址编码" },
-  { value: "reverse", label: "经纬度解码" },
-  { value: "route", label: "导航距离计算" },
-];
 
 let mapInstance = null;
 let mapMarkers = [];
@@ -166,34 +284,6 @@ let realtimeRefreshPendingFitBounds = false;
 let routeHoverHandlers = null;
 const routeSourceId = "route-line";
 const routeLayerId = "route-line";
-
-const storageKeys = {
-  provider: "geocode_provider",
-  mapboxGeocode: "mapbox_geocode_api_key",
-  hereGeocode: "here_geocode_api_key",
-  mapboxMap: "mapbox_map_api_key",
-  customAppId: "custom_app_id",
-  customCredential: "custom_credential",
-  customTokenUrl: "custom_token_url",
-  customGeocodeUrl: "custom_geocode_url",
-  customRouteUrl: "custom_route_url",
-  customWebSocketUrl: "custom_websocket_url",
-  columnName: "geocode_column_name",
-  latColumnName: "reverse_lat_column_name",
-  lngColumnName: "reverse_lng_column_name",
-  reverseColumnMode: "reverse_column_mode",
-  reverseColumnName: "reverse_column_name",
-  reverseDelimiterMode: "reverse_delimiter_mode",
-  reverseDelimiter: "reverse_delimiter",
-  startColumnName: "route_start_column_name",
-  endColumnName: "route_end_column_name",
-  routeInputMode: "route_input_mode",
-  mode: "geocode_mode",
-  mapRealtimeUpdate: "map_realtime_update",
-};
-
-const getProviderStorageKey = (currentProvider) =>
-  currentProvider === "mapbox" ? storageKeys.mapboxGeocode : storageKeys.hereGeocode;
 
 const normalizeCoordinate = (value) => {
   const num = Number(value);
@@ -2412,82 +2502,6 @@ const handleConfigFileChange = async (event) => {
 };
 
 onMounted(() => {
-  mode.value = "visualize";
-  const savedProvider = localStorage.getItem(storageKeys.provider);
-  if (savedProvider === "mapbox" || savedProvider === "here" || savedProvider === "custom") {
-    provider.value = savedProvider;
-  }
-  if (provider.value === "custom") {
-    const savedAppId = localStorage.getItem(storageKeys.customAppId);
-    const savedCredential = localStorage.getItem(storageKeys.customCredential);
-    const savedTokenUrl = localStorage.getItem(storageKeys.customTokenUrl);
-    const savedGeocodeUrl = localStorage.getItem(storageKeys.customGeocodeUrl);
-    const savedRouteUrl = localStorage.getItem(storageKeys.customRouteUrl);
-    const savedWebSocketUrl = localStorage.getItem(storageKeys.customWebSocketUrl);
-    if (savedAppId) {
-      customAppId.value = savedAppId;
-    }
-    if (savedCredential) {
-      customCredential.value = savedCredential;
-    }
-    if (savedTokenUrl) {
-      customTokenUrl.value = savedTokenUrl;
-    }
-    if (savedGeocodeUrl) {
-      customGeocodeUrl.value = savedGeocodeUrl;
-    }
-    if (savedRouteUrl) {
-      customRouteUrl.value = savedRouteUrl;
-    }
-    if (savedWebSocketUrl) {
-      customWebSocketUrl.value = savedWebSocketUrl;
-    }
-  } else {
-    const savedProviderKey = localStorage.getItem(getProviderStorageKey(provider.value));
-    if (savedProviderKey) {
-      providerApiKey.value = savedProviderKey;
-    }
-  }
-  const savedMapboxKey = localStorage.getItem(storageKeys.mapboxGeocode);
-  if (savedMapboxKey) {
-    mapboxGeocodeApiKey.value = savedMapboxKey;
-  }
-  const savedHereKey = localStorage.getItem(storageKeys.hereGeocode);
-  if (savedHereKey) {
-    hereGeocodeApiKey.value = savedHereKey;
-  }
-  if (provider.value !== "custom") {
-    providerApiKey.value =
-      provider.value === "mapbox" ? mapboxGeocodeApiKey.value : hereGeocodeApiKey.value;
-  }
-  const savedReverseMode = localStorage.getItem(storageKeys.reverseColumnMode);
-  if (savedReverseMode === "single" || savedReverseMode === "separate") {
-    reverseColumnMode.value = savedReverseMode;
-  }
-  const savedReverseColumn = localStorage.getItem(storageKeys.reverseColumnName);
-  if (savedReverseColumn) {
-    reverseColumnName.value = savedReverseColumn;
-  }
-  const savedDelimiterMode = localStorage.getItem(storageKeys.reverseDelimiterMode);
-  if (savedDelimiterMode === "auto" || savedDelimiterMode === "custom") {
-    reverseDelimiterMode.value = savedDelimiterMode;
-  }
-  const savedDelimiter = localStorage.getItem(storageKeys.reverseDelimiter);
-  if (savedDelimiter) {
-    reverseDelimiter.value = savedDelimiter;
-  }
-  const savedRouteInputMode = localStorage.getItem(storageKeys.routeInputMode);
-  if (savedRouteInputMode === "address" || savedRouteInputMode === "coordinate") {
-    routeInputMode.value = savedRouteInputMode;
-  }
-  const savedMapRealtimeUpdate = localStorage.getItem(storageKeys.mapRealtimeUpdate);
-  if (savedMapRealtimeUpdate === "0") {
-    mapRealtimeUpdate.value = false;
-  }
-  const savedKey = localStorage.getItem(storageKeys.mapboxMap);
-  if (savedKey) {
-    mapApiKey.value = savedKey;
-  }
   if (mapApiKey.value) {
     initMap();
   }

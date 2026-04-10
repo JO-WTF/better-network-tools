@@ -2,7 +2,8 @@
   <section class="visual-page">
     <div class="visual-top">
       <div ref="mapContainer" class="visual-map"></div>
-      <div v-if="!mapReady" class="visual-map-empty">请输入设置中的 Mapbox 地图 Key 以启用可视化。</div>
+      <div v-if="!mapApiKey && !mapReady" class="visual-map-empty">请输入设置中的 Mapbox 地图 Key 以启用可视化。</div>
+      <div v-else-if="mapApiKey && !mapReady" class="visual-map-empty">正在加载地图资源...</div>
       <div v-if="isProcessing" class="visual-map-mask">
         <div class="mask-card">正在处理数据并加载地图要素...</div>
       </div>
@@ -179,12 +180,42 @@
           v-model:pageSize="pageSize"
           :pagination="{ 
             showSizeChanger: true, 
+            pageSizeOptions: ['10', '20', '50', '100', '200', '500', '1000'],
             showTotal: total => `共 ${total} 条`
           }"
           size="small"
           bordered
           :scroll="{ x: 'max-content' }"
         >
+          <template #customFilterDropdown="{ setSelectedKeys, selectedKeys, confirm, clearFilters, column }">
+            <div style="padding: 8px">
+              <a-input
+                ref="searchInput"
+                :placeholder="`搜索 ${column.title}`"
+                :value="selectedKeys[0]"
+                style="width: 188px; margin-bottom: 8px; display: block"
+                @change="e => setSelectedKeys(e.target.value ? [e.target.value] : [])"
+                @pressEnter="confirm()"
+              />
+              <a-space>
+                <a-button
+                  type="primary"
+                  size="small"
+                  style="width: 90px"
+                  @click="confirm()"
+                >
+                  <template #icon><Search :size="14" /></template>
+                  确定
+                </a-button>
+                <a-button size="small" style="width: 90px" @click="clearFilters()">
+                  重置
+                </a-button>
+              </a-space>
+            </div>
+          </template>
+          <template #customFilterIcon="{ filtered }">
+            <Search :size="14" :style="{ color: filtered ? '#1890ff' : undefined }" />
+          </template>
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'geometryType'">
               <span class="geometry-badge">{{ record.geometryType }}</span>
@@ -259,7 +290,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import mapboxgl from "mapbox-gl";
 import * as XLSX from "xlsx";
-import { Eye, EyeOff, Settings, MapPin, Minus, Square, X, Plus, Filter, FilterX } from "lucide-vue-next";
+import { Eye, EyeOff, Settings, MapPin, Minus, Square, X, Plus, Filter, FilterX, Search } from "lucide-vue-next";
 
 const props = defineProps({
   mapApiKey: { type: String, default: "" },
@@ -292,7 +323,7 @@ const editingValue = ref("");
 const skipBlurSave = ref(false);
 
 const rowElementMap = new Map();
-let featureCounter = 1;
+const featureCounter = ref(1);
 let map = null;
 const drawMode = ref("none");
 const drawingCoords = ref([]);
@@ -348,23 +379,41 @@ const tableColumns = computed(() => {
   if (!activeDataset.value) return [];
   
   const baseCols = [
-    { title: 'GID', dataIndex: 'gid', key: 'gid', width: 80 },
-    { title: 'GEOMETRY', dataIndex: 'geometryType', key: 'geometryType', width: 120 },
+    { 
+      title: 'GID', 
+      dataIndex: 'gid', 
+      key: 'gid', 
+      width: 80,
+      sorter: (a, b) => a.gid - b.gid
+    },
+    { 
+      title: 'GEOMETRY', 
+      dataIndex: 'geometryType', 
+      key: 'geometryType', 
+      width: 120,
+      filters: [
+        { text: 'Point', value: 'Point' },
+        { text: 'LineString', value: 'LineString' },
+        { text: 'Polygon', value: 'Polygon' },
+        { text: 'MultiPoint', value: 'MultiPoint' },
+        { text: 'MultiLineString', value: 'MultiLineString' },
+        { text: 'MultiPolygon', value: 'MultiPolygon' },
+      ],
+      onFilter: (value, record) => record.geometryType === value,
+    },
   ];
 
   const extraCols = activeDataset.value.extraColumns.map(col => {
-    const uniqueValues = [...new Set(activeDataset.value.rows.map(r => r.properties[col]))]
-      .filter(v => v !== null && v !== undefined && String(v).trim() !== '');
-    
-    const filters = uniqueValues.map(v => ({ text: String(v), value: String(v) }));
-
     return {
       title: col,
       dataIndex: ['properties', col],
       key: col,
-      filters: filters.length > 0 ? filters : undefined,
-      onFilter: (value, record) => String(record.properties[col]) === value,
-      filterSearch: true,
+      sorter: (a, b) => String(a.properties[col]).localeCompare(String(b.properties[col])),
+      customFilterDropdown: true,
+      onFilter: (value, record) => 
+        String(record.properties[col] || '')
+          .toLowerCase()
+          .includes(value.toLowerCase()),
       ellipsis: true,
     };
   });
@@ -1060,8 +1109,8 @@ const appendRowsFromFeatures = (features) => {
 
   const nextRows = features.map((feature, index) => {
     const gid = start + index;
-    const featureKey = `d${activeDataset.value.id}-f${featureCounter}`;
-    featureCounter += 1;
+    const featureKey = `d${activeDataset.value.id}-f${featureCounter.value}`;
+    featureCounter.value += 1;
     
     // Sanitize feature to avoid circular structures (especially from Mapbox queryRenderedFeatures)
     const sanitizedFeature = {
@@ -1346,9 +1395,56 @@ const removeFeature = (featureKey) => {
   refreshSource();
 };
 
+const STORAGE_KEY = "map_viz_app_state";
+
+const saveState = () => {
+  try {
+    const state = {
+      datasets: datasets.value,
+      datasetStyles: datasetStyles.value,
+      activeDatasetId: activeDatasetId.value,
+      geometryFilter: geometryFilter.value,
+      currentPage: currentPage.value,
+      pageSize: pageSize.value,
+      featureCounter: featureCounter.value,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.warn("Failed to save state to localStorage (possibly quota exceeded)", e);
+  }
+};
+
+const loadState = () => {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    try {
+      const state = JSON.parse(saved);
+      if (state.datasets) datasets.value = state.datasets;
+      if (state.datasetStyles) datasetStyles.value = state.datasetStyles;
+      if (state.activeDatasetId) activeDatasetId.value = state.activeDatasetId;
+      if (state.geometryFilter) geometryFilter.value = state.geometryFilter;
+      if (state.currentPage) currentPage.value = state.currentPage;
+      if (state.pageSize) pageSize.value = state.pageSize;
+      if (state.featureCounter) featureCounter.value = state.featureCounter;
+    } catch (e) {
+      console.error("Failed to load state from localStorage", e);
+    }
+  }
+};
+
+loadState();
+
 onMounted(() => {
   ensureMap();
 });
+
+watch(
+  [datasets, datasetStyles, activeDatasetId, geometryFilter, currentPage, pageSize, featureCounter],
+  () => {
+    saveState();
+  },
+  { deep: true }
+);
 
 watch(
   () => props.mapApiKey,
