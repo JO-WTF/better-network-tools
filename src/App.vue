@@ -10,7 +10,7 @@
 
     <MapVisualizationPage v-if="mode === 'visualize'" :map-api-key="mapApiKey" />
 
-    <main v-else class="layout" :class="{ 'no-map': isInitialStateLoaded && !mapApiKey }">
+    <main v-else class="layout">
       <section class="panel">
         <div class="card">
           <div class="card-header">
@@ -197,7 +197,7 @@
         <LogCard :logs="logs" />
       </section>
 
-      <section v-if="isInitialStateLoaded" class="map-panel">
+      <section class="map-panel">
         <div class="map-wrapper">
           <div v-if="mapApiKey" class="map-toolbar">
             <label class="map-live-toggle">
@@ -210,7 +210,7 @@
             <div class="loading-spinner"></div>
             <p>正在加载地图...</p>
           </div>
-          <div v-if="!mapApiKey" class="map-config">
+          <div v-if="isInitialStateLoaded && !mapApiKey" class="map-config">
             <h3>地图配置</h3>
             <p class="hint">请在设置中填写 Mapbox API Key 以启用地图面板。</p>
             <button class="secondary" @click="showSettings = true">打开设置</button>
