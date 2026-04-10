@@ -1,0 +1,5 @@
+{
+  "name": "Network Tools",
+  "description": "A collection of network tools for geocoding, reverse geocoding, and route planning using Mapbox and HERE APIs.",
+  "requestFramePermissions": []
+}
