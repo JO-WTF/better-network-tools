@@ -95,7 +95,6 @@
         <div
           class="dropzone visual-dropzone"
           :class="{ active: isDragging, flash: dropzoneFlash }"
-          title="可自动识别geojson和csv格式数据。csv格式必须有一行表头，且表头至少包含经度与纬度字段（如：经度/纬度、lon/lng/longitude/long 与 lat/latitude，不区分大小写）"
           @dragover.prevent="handleDragOver"
           @dragleave.prevent="handleDragLeave"
           @drop.prevent="handleFileDrop"
@@ -111,7 +110,7 @@
           />
           <div v-if="!isProcessing" class="dropzone-content">
             <p class="main-text">拖放文件或点击上传</p>
-            <p class="sub-text">支持 GeoJSON/CSV/Excel (需包含经纬度字段)</p>
+            <p class="sub-text">支持 GeoJSON/JSON/CSV/Excel。CSV/Excel 需包含经纬度字段（如：经度/纬度、lon/lng/lat、longitude/latitude，不区分大小写）</p>
           </div>
           <p v-else>正在处理...</p>
         </div>
@@ -122,7 +121,6 @@
         <div class="paste-input-wrap">
           <textarea
             v-model="pasteInput"
-            rows="4"
             placeholder="支持粘贴 geojson / csv / wkt (POINT, LINESTRING, POLYGON, MULTIPOLYGON)"
           />
           <button
@@ -136,7 +134,10 @@
             <X :size="16" />
           </button>
         </div>
-        <button class="primary" type="button" @click="handlePasteImport" :disabled="isProcessing">解析并导入</button>
+        <div class="paste-actions">
+          <button class="primary" type="button" @click="handlePasteImport" :disabled="isProcessing">导入</button>
+          <button class="secondary" type="button" @click="showPaste = false">关闭</button>
+        </div>
       </div>
 
       <div v-if="activeDataset" class="table-tools">
@@ -174,7 +175,11 @@
           >
             面
           </button>
-          <button type="button" class="secondary small add-field-btn" @click="addColumnField">新增字段</button>
+          <div class="global-search">
+            <Search :size="14" class="search-icon" />
+            <input v-model="globalSearchText" placeholder="搜索所有字段..." />
+          </div>
+          <button type="button" class="secondary small add-field-btn" @click="openAddFieldModal">新增字段</button>
         </div>
       </div>
 
@@ -195,35 +200,6 @@
           bordered
           :scroll="{ x: 'max-content' }"
         >
-          <template #customFilterDropdown="{ setSelectedKeys, selectedKeys, confirm, clearFilters, column }">
-            <div style="padding: 8px">
-              <a-input
-                ref="searchInput"
-                :placeholder="`搜索 ${column.title}`"
-                :value="selectedKeys[0]"
-                style="width: 188px; margin-bottom: 8px; display: block"
-                @change="e => setSelectedKeys(e.target.value ? [e.target.value] : [])"
-                @pressEnter="confirm()"
-              />
-              <a-space>
-                <a-button
-                  type="primary"
-                  size="small"
-                  style="width: 90px"
-                  @click="confirm()"
-                >
-                  <template #icon><Search :size="14" /></template>
-                  确定
-                </a-button>
-                <a-button size="small" style="width: 90px" @click="clearFilters()">
-                  重置
-                </a-button>
-              </a-space>
-            </div>
-          </template>
-          <template #customFilterIcon="{ filtered }">
-            <Search :size="14" :style="{ color: filtered ? '#1890ff' : undefined }" />
-          </template>
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'geometryType'">
               <span class="geometry-badge">{{ record.geometryType }}</span>
@@ -254,6 +230,28 @@
       </div>
     </div>
     
+    <div v-if="showAddFieldModal" class="settings-backdrop" @click.self="closeAddFieldModal">
+      <div class="style-modal add-field-modal" role="dialog" aria-modal="true">
+        <div class="style-modal-header">
+          <h3>新增字段</h3>
+          <button class="icon-button" type="button" @click="closeAddFieldModal">
+            <X :size="18" />
+          </button>
+        </div>
+        <div class="modal-body">
+          <label class="field">
+            <span>字段名称</span>
+            <input v-model="newFieldName" type="text" placeholder="请输入字段名称" @keydown.enter="confirmAddField" />
+          </label>
+          <p class="hint">不能使用 gid, geometry 或以 __ 开头的名称</p>
+        </div>
+        <div class="style-modal-actions">
+          <button class="secondary" type="button" @click="closeAddFieldModal">取消</button>
+          <button class="primary" type="button" @click="confirmAddField" :disabled="!newFieldName.trim()">确定</button>
+        </div>
+      </div>
+    </div>
+
     <div v-if="styleConfigDatasetId !== null" class="settings-backdrop" @click.self="closeStyleConfig">
       <div class="style-modal" role="dialog" aria-modal="true" aria-label="数据集样式设置">
         <div class="style-modal-header">
@@ -312,7 +310,7 @@ const createDefaultDatasetStyle = () => ({
 
 const mapContainer = ref(null);
 const mapReady = ref(false);
-const isLoaded = ref(false);
+const isLoaded = ref(true);
 const showPaste = ref(false);
 const pasteInput = ref("");
 const isProcessing = ref(false);
@@ -327,11 +325,14 @@ const styleDraft = ref(createDefaultDatasetStyle());
 const activeDatasetId = ref(1);
 const selectedFeatureKey = ref("");
 const geometryFilter = ref("all");
+const globalSearchText = ref("");
 const currentPage = ref(1);
 const pageSize = ref(20);
 const editingCell = ref({ featureKey: "", column: "" });
 const editingValue = ref("");
 const skipBlurSave = ref(false);
+const showAddFieldModal = ref(false);
+const newFieldName = ref("");
 
 const rowElementMap = new Map();
 const featureCounter = ref(1);
@@ -370,16 +371,15 @@ const filteredRows = computed(() => {
     rows = rows.filter((row) => resolveGeometryGroup(row.geometryType) === geometryFilter.value);
   }
   
-  const filters = activeDataset.value.filters || {};
-  const activeCols = Object.keys(filters).filter(col => filters[col] && filters[col].trim() !== '');
-  
-  if (activeCols.length > 0) {
+  if (globalSearchText.value.trim()) {
+    const search = globalSearchText.value.trim().toLowerCase();
     rows = rows.filter(row => {
-      return activeCols.every(col => {
-        const cellValue = String(row.properties[col] ?? '').toLowerCase();
-        const filterValue = filters[col].trim().toLowerCase();
-        return cellValue.includes(filterValue);
-      });
+      // 搜索几何类型
+      if (row.geometryType.toLowerCase().includes(search)) return true;
+      // 搜索所有属性字段
+      return Object.values(row.properties).some(val => 
+        String(val ?? '').toLowerCase().includes(search)
+      );
     });
   }
   
@@ -415,16 +415,20 @@ const tableColumns = computed(() => {
   ];
 
   const extraCols = activeDataset.value.extraColumns.map(col => {
+    // 获取该列所有唯一值作为筛选选项
+    const uniqueValues = Array.from(new Set(activeDataset.value.rows.map(row => row.properties[col])))
+      .filter(val => val !== undefined && val !== null && val !== '')
+      .sort();
+    
+    const filterOptions = uniqueValues.map(val => ({ text: String(val), value: val }));
+
     return {
       title: col,
       dataIndex: ['properties', col],
       key: col,
       sorter: (a, b) => String(a.properties[col]).localeCompare(String(b.properties[col])),
-      customFilterDropdown: true,
-      onFilter: (value, record) => 
-        String(record.properties[col] || '')
-          .toLowerCase()
-          .includes(value.toLowerCase()),
+      filters: filterOptions.length > 0 ? filterOptions : undefined,
+      onFilter: (value, record) => String(record.properties[col]) === String(value),
       ellipsis: true,
     };
   });
@@ -613,14 +617,30 @@ const saveEditCell = (row, column) => {
   cancelEditCell();
 };
 
-const addColumnField = () => {
-  if (!activeDataset.value) return;
-  const input = window.prompt("请输入新增字段名称");
-  const column = (input || "").trim();
+const openAddFieldModal = () => {
+  newFieldName.value = "";
+  showAddFieldModal.value = true;
+};
+
+const closeAddFieldModal = () => {
+  showAddFieldModal.value = false;
+};
+
+const confirmAddField = () => {
+  const column = newFieldName.value.trim();
   if (!column) return;
+  
   const lower = column.toLowerCase();
-  if (["gid", "geometry"].includes(lower) || lower.startsWith("__")) return;
-  if (activeDataset.value.extraColumns.includes(column)) return;
+  if (["gid", "geometry"].includes(lower) || lower.startsWith("__")) {
+    alert("该名称为系统保留字段，请使用其他名称。");
+    return;
+  }
+  
+  if (activeDataset.value.extraColumns.includes(column)) {
+    alert("该字段已存在。");
+    return;
+  }
+
   activeDataset.value.extraColumns = [...activeDataset.value.extraColumns, column];
   activeDataset.value.rows.forEach((row) => {
     if (!(column in row.properties)) {
@@ -630,6 +650,8 @@ const addColumnField = () => {
       }
     }
   });
+  
+  closeAddFieldModal();
 };
 
 const ensureSelectedRowVisible = (featureKey) => {
@@ -1308,6 +1330,7 @@ const handleFileUpload = async (event) => {
 const handlePasteImport = async () => {
   await importFeaturesWithMask(pasteInput.value);
   pasteInput.value = "";
+  showPaste.value = false;
 };
 
 const clearPasteInput = () => {
@@ -1433,57 +1456,9 @@ const removeFeature = (featureKey) => {
   refreshSource();
 };
 
-const STORAGE_KEY = "map_viz_app_state";
-
-const saveState = () => {
-  try {
-    const state = {
-      datasets: datasets.value,
-      datasetStyles: datasetStyles.value,
-      activeDatasetId: activeDatasetId.value,
-      geometryFilter: geometryFilter.value,
-      currentPage: currentPage.value,
-      pageSize: pageSize.value,
-      featureCounter: featureCounter.value,
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch (e) {
-    console.warn("Failed to save state to localStorage (possibly quota exceeded)", e);
-  }
-};
-
-const loadState = () => {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) {
-    try {
-      const state = JSON.parse(saved);
-      if (state.datasets) datasets.value = state.datasets;
-      if (state.datasetStyles) datasetStyles.value = state.datasetStyles;
-      if (state.activeDatasetId) activeDatasetId.value = state.activeDatasetId;
-      if (state.geometryFilter) geometryFilter.value = state.geometryFilter;
-      if (state.currentPage) currentPage.value = state.currentPage;
-      if (state.pageSize) pageSize.value = state.pageSize;
-      if (state.featureCounter) featureCounter.value = state.featureCounter;
-    } catch (e) {
-      console.error("Failed to load state from localStorage", e);
-    }
-  }
-  isLoaded.value = true;
-};
-
-loadState();
-
 onMounted(() => {
   ensureMap();
 });
-
-watch(
-  [datasets, datasetStyles, activeDatasetId, geometryFilter, currentPage, pageSize, featureCounter],
-  () => {
-    saveState();
-  },
-  { deep: true }
-);
 
 watch(
   () => props.mapApiKey,
