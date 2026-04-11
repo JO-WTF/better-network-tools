@@ -92,23 +92,29 @@
       </div>
 
       <div class="dataset-toolbar">
-        <button
-          class="secondary action-button"
-          type="button"
-          :disabled="isProcessing"
+        <div
+          class="dropzone visual-dropzone"
+          :class="{ active: isDragging, flash: dropzoneFlash }"
           title="可自动识别geojson和csv格式数据。csv格式必须有一行表头，且表头至少包含经度与纬度字段（如：经度/纬度、lon/lng/longitude/long 与 lat/latitude，不区分大小写）"
+          @dragover.prevent="handleDragOver"
+          @dragleave.prevent="handleDragLeave"
+          @drop.prevent="handleFileDrop"
           @click="triggerFilePicker"
         >
-          上传文件
-        </button>
-        <input
-          ref="dataFileInput"
-          class="visually-hidden"
-          type="file"
-          accept=".geojson,.json,.csv,.xlsx,.xls"
-          :disabled="isProcessing"
-          @change="handleFileUpload"
-        />
+          <input
+            ref="dataFileInput"
+            class="visually-hidden"
+            type="file"
+            accept=".geojson,.json,.csv,.xlsx,.xls"
+            :disabled="isProcessing"
+            @change="handleFileUpload"
+          />
+          <div v-if="!isProcessing" class="dropzone-content">
+            <p class="main-text">拖放文件或点击上传</p>
+            <p class="sub-text">支持 GeoJSON/CSV/Excel (需包含经纬度字段)</p>
+          </div>
+          <p v-else>正在处理...</p>
+        </div>
         <button class="secondary action-button" type="button" @click="showPaste = !showPaste" :disabled="isProcessing">粘贴数据</button>
               </div>
 
@@ -311,6 +317,8 @@ const showPaste = ref(false);
 const pasteInput = ref("");
 const isProcessing = ref(false);
 const dataFileInput = ref(null);
+const isDragging = ref(false);
+const dropzoneFlash = ref(false);
 
 const datasets = ref([{ id: 1, name: "数据集 1", rows: [], extraColumns: [], visible: true, filters: {} }]);
 const datasetStyles = ref({ 1: createDefaultDatasetStyle() });
@@ -1231,8 +1239,29 @@ const triggerFilePicker = () => {
   dataFileInput.value?.click();
 };
 
-const handleFileUpload = async (event) => {
-  const file = event.target.files?.[0];
+const handleDragOver = () => {
+  isDragging.value = true;
+};
+
+const handleDragLeave = () => {
+  isDragging.value = false;
+};
+
+const handleFileDrop = async (event) => {
+  isDragging.value = false;
+  const file = event.dataTransfer?.files?.[0];
+  if (!file) return;
+  
+  // Trigger flash animation
+  dropzoneFlash.value = true;
+  setTimeout(() => {
+    dropzoneFlash.value = false;
+  }, 600);
+
+  await processFile(file);
+};
+
+const processFile = async (file) => {
   if (!file) return;
 
   isProcessing.value = true;
@@ -1266,8 +1295,14 @@ const handleFileUpload = async (event) => {
     alert("文件解析失败，请检查文件格式是否正确。");
   } finally {
     isProcessing.value = false;
-    event.target.value = "";
   }
+};
+
+const handleFileUpload = async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  await processFile(file);
+  event.target.value = "";
 };
 
 const handlePasteImport = async () => {
