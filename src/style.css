@@ -97,6 +97,32 @@ h1 {
   height: 18px;
 }
 
+.toast {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1e293b;
+  color: #ffffff;
+  padding: 10px 20px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  z-index: 9999;
+}
+
+.toast-enter-active,
+.toast-leave-active {
+  transition: all 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+}
+
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -20px);
+}
+
 .layout {
   display: grid;
   grid-template-columns: minmax(320px, 420px) 1fr;
@@ -661,6 +687,123 @@ button:not(:disabled):hover {
   gap: 6px;
   font-size: 12px;
   color: #475569;
+}
+
+.single-action-card {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  background: #ffffff;
+  width: 280px;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  z-index: 20;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+}
+
+.single-action-header {
+  padding: 10px 14px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.single-action-body {
+  padding: 12px;
+}
+
+.single-action-body .input-group {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.single-action-body input {
+  flex: 1;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.single-action-body input:focus {
+  border-color: #2563eb;
+}
+
+.single-action-body .action-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.result-area {
+  background: #f1f5f9;
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.result-area.error {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.result-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.result-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 0 0 2px 0;
+  font-weight: 600;
+}
+
+.result-area.error .result-label {
+  color: #ef4444;
+}
+
+.result-text {
+  font-size: 13px;
+  margin: 0;
+  word-break: break-all;
+  line-height: 1.4;
+  color: #1e293b;
+}
+
+.copy-btn {
+  padding: 4px;
+  color: #64748b;
+  transition: color 0.2s;
+}
+
+.copy-btn:hover {
+  color: #2563eb;
+}
+
+.spinner-small {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
 .map-empty {

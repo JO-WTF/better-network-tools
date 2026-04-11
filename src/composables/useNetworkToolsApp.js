@@ -72,6 +72,12 @@ const mapRealtimeUpdate = ref(true);
 const mode = ref("visualize");
 const isInitialStateLoaded = ref(false);
 
+const singleInput = ref("");
+const singleResult = ref(null);
+const singleLoading = ref(false);
+const showToast = ref(false);
+const toastMessage = ref("");
+
 const modeOptions = [
   { value: "visualize", label: "地图可视化" },
   { value: "geocode", label: "地址编码" },
@@ -755,6 +761,9 @@ const startCustomGeocode = () => {
   routeLines.value = [];
   renderedPointKeys.clear();
   renderedRouteKeys.clear();
+  if (mapRealtimeUpdate.value) {
+    refreshMarkers();
+  }
   geocodeState.running = true;
   geocodeState.processed = 0;
   geocodeState.current = "";
@@ -1255,6 +1264,9 @@ const startGeocode = async () => {
   routeLines.value = [];
   renderedPointKeys.clear();
   renderedRouteKeys.clear();
+  if (mapRealtimeUpdate.value) {
+    refreshMarkers();
+  }
   geocodeState.running = true;
   geocodeState.processed = 0;
   geocodeState.current = "";
@@ -1303,6 +1315,9 @@ const startReverseGeocode = async () => {
   routeLines.value = [];
   renderedPointKeys.clear();
   renderedRouteKeys.clear();
+  if (mapRealtimeUpdate.value) {
+    refreshMarkers();
+  }
   geocodeState.running = true;
   geocodeState.processed = 0;
   geocodeState.current = "";
@@ -1659,6 +1674,111 @@ const startRoute = async () => {
   geocodeState.current = "";
   flushAllPersistentCaches();
   refreshMarkers();
+};
+
+const handleSingleAction = async () => {
+  const input = singleInput.value.trim();
+  if (!input) return;
+
+  // Clear existing markers before new single action
+  points.value = [];
+  renderedPointKeys.clear();
+  routeLines.value = [];
+  renderedRouteKeys.clear();
+  if (mapRealtimeUpdate.value) {
+    refreshMarkers();
+  }
+
+  singleLoading.value = true;
+  singleResult.value = null;
+
+  try {
+    if (mode.value === "geocode") {
+      const result = await geocodeAddress(input);
+      if (result.success) {
+        singleResult.value = {
+          type: "geocode",
+          lat: result.lat,
+          lng: result.lng,
+          display: `${result.lat}, ${result.lng}`,
+        };
+        // Also add to map if realtime update is on
+        pushPointIfNeeded({
+          lat: result.lat,
+          lng: result.lng,
+          address: input,
+        });
+        if (mapRealtimeUpdate.value) {
+          scheduleRealtimeRefresh({ fitBounds: true });
+        }
+      } else {
+        singleResult.value = {
+          error: true,
+          message: result.response || "编码失败",
+        };
+      }
+    } else if (mode.value === "reverse") {
+      // Try to parse input as lat,lng
+      const parts = input.split(/[,，\s]+/).map((p) => p.trim());
+      if (parts.length < 2) {
+        singleResult.value = {
+          error: true,
+          message: "请输入有效的经纬度（如：39.9, 116.4）",
+        };
+      } else {
+        const lat = parseFloat(parts[0]);
+        const lng = parseFloat(parts[1]);
+        if (isNaN(lat) || isNaN(lng)) {
+          singleResult.value = {
+            error: true,
+            message: "经纬度格式错误",
+          };
+        } else {
+          const result = await reverseGeocode(lat, lng);
+          if (result.success) {
+            singleResult.value = {
+              type: "reverse",
+              address: result.address,
+              display: result.address,
+            };
+            // Also add to map
+            pushPointIfNeeded({
+              lat,
+              lng,
+              address: result.address,
+            });
+            if (mapRealtimeUpdate.value) {
+              scheduleRealtimeRefresh({ fitBounds: true });
+            }
+          } else {
+            singleResult.value = {
+              error: true,
+              message: result.response || "解码失败",
+            };
+          }
+        }
+      }
+    }
+  } catch (error) {
+    singleResult.value = {
+      error: true,
+      message: String(error),
+    };
+  } finally {
+    singleLoading.value = false;
+  }
+};
+
+const copySingleResult = () => {
+  if (!singleResult.value || singleResult.value.error) return;
+  const text = singleResult.value.display;
+  navigator.clipboard.writeText(text).then(() => {
+    toastMessage.value = "已复制到剪切板";
+    showToast.value = true;
+    setTimeout(() => {
+      showToast.value = false;
+    }, 2000);
+  });
 };
 
 const handleStart = () => {
@@ -2707,6 +2827,12 @@ watch(mode, (value) => {
   }
 });
 
+  watch(mode, () => {
+    singleInput.value = "";
+    singleResult.value = null;
+    singleLoading.value = false;
+  });
+
   return {
     headers,
     rows,
@@ -2745,6 +2871,11 @@ watch(mode, (value) => {
     mockAnimating,
     mapRealtimeUpdate,
     isInitialStateLoaded,
+    singleInput,
+    singleResult,
+    singleLoading,
+    showToast,
+    toastMessage,
     points,
     routeLines,
     mode,
@@ -2762,6 +2893,8 @@ watch(mode, (value) => {
     handleFileDrop,
     fillMockData,
     handleStart,
+    handleSingleAction,
+    copySingleResult,
     downloadExcel,
     triggerConfigImport,
     handleConfigFileChange,

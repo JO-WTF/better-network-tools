@@ -215,6 +215,45 @@
             <p class="hint">请在设置中填写 Mapbox API Key 以启用地图面板。</p>
             <button class="secondary" @click="showSettings = true">打开设置</button>
           </div>
+
+          <!-- Single Action Floating Card -->
+          <div v-if="mapApiKey && (mode === 'geocode' || mode === 'reverse')" class="single-action-card">
+            <div class="single-action-header">
+              <span>{{ mode === 'geocode' ? '单次地址编码' : '单次经纬度反编码' }}</span>
+            </div>
+            <div class="single-action-body">
+              <div class="input-group">
+                <input 
+                  v-model="singleInput" 
+                  type="text" 
+                  :placeholder="mode === 'geocode' ? '输入地址...' : '输入经纬度 (lat,lng)...'"
+                  @keyup.enter="handleSingleAction"
+                />
+                <button 
+                  class="primary action-btn" 
+                  :disabled="singleLoading || !singleInput"
+                  @click="handleSingleAction"
+                >
+                  <Search v-if="!singleLoading" :size="16" />
+                  <span v-else class="spinner-small"></span>
+                </button>
+              </div>
+              <div v-if="singleResult" class="result-area" :class="{ error: singleResult.error }">
+                <div class="result-content">
+                  <p class="result-label">{{ singleResult.error ? '错误' : '结果' }}</p>
+                  <p class="result-text">{{ singleResult.error ? singleResult.message : singleResult.display }}</p>
+                </div>
+                <button 
+                  v-if="!singleResult.error" 
+                  class="icon-button copy-btn" 
+                  title="复制结果"
+                  @click="copySingleResult"
+                >
+                  <Copy :size="14" />
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     </main>
@@ -292,6 +331,13 @@
         </div>
       </div>
     </div>
+
+    <!-- Toast Notification -->
+    <Transition name="toast">
+      <div v-if="showToast" class="toast">
+        {{ toastMessage }}
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -301,6 +347,7 @@ import ProgressCard from "./components/ProgressCard.vue";
 import LogCard from "./components/LogCard.vue";
 import MapVisualizationPage from "./components/MapVisualizationPage.vue";
 import { useNetworkToolsApp } from "./composables/useNetworkToolsApp";
+import { Search, Copy } from "lucide-vue-next";
 
 const {
   headers,
@@ -337,6 +384,11 @@ const {
   mockAnimating,
   mapRealtimeUpdate,
   isInitialStateLoaded,
+  singleInput,
+  singleResult,
+  singleLoading,
+  showToast,
+  toastMessage,
   mode,
   modeOptions,
   canStart,
@@ -352,6 +404,8 @@ const {
   handleFileDrop,
   fillMockData,
   handleStart,
+  handleSingleAction,
+  copySingleResult,
   downloadExcel,
   triggerConfigImport,
   handleConfigFileChange,
