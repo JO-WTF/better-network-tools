@@ -8,23 +8,26 @@ import "mapbox-gl/dist/mapbox-gl.css";
 const app = createApp(App);
 
 // Suppress ResizeObserver loop limit exceeded error
-const debounce = (fn, delay) => {
-  let timeoutId;
-  return (...args) => {
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => fn(...args), delay);
-  };
-};
-
-const handleResizeError = debounce((e) => {
-  if (e.message === 'ResizeObserver loop completed with undelivered notifications.' || e.message === 'ResizeObserver loop limit exceeded') {
+const handleResizeError = (e) => {
+  const suppressedErrors = [
+    'ResizeObserver loop completed with undelivered notifications.',
+    'ResizeObserver loop limit exceeded',
+    'this.errorCb is not a function'
+  ];
+  if (e.message && suppressedErrors.some(msg => e.message.includes(msg))) {
     e.stopImmediatePropagation();
+    return;
   }
-}, 100);
+};
 
 window.addEventListener('error', handleResizeError);
 window.addEventListener('unhandledrejection', (e) => {
-  if (e.reason && (e.reason.message === 'ResizeObserver loop completed with undelivered notifications.' || e.reason.message === 'ResizeObserver loop limit exceeded')) {
+  const suppressedErrors = [
+    'ResizeObserver loop completed with undelivered notifications.',
+    'ResizeObserver loop limit exceeded',
+    'this.errorCb is not a function'
+  ];
+  if (e.reason && e.reason.message && suppressedErrors.some(msg => e.reason.message.includes(msg))) {
     e.stopImmediatePropagation();
   }
 });

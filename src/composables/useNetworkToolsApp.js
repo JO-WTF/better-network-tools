@@ -1,6 +1,9 @@
 import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
 import mapboxgl from "mapbox-gl";
 import * as XLSX from "xlsx";
+import { useGeocode } from "./useGeocode";
+import { useReverseGeocode } from "./useReverseGeocode";
+import { useRoute } from "./useRoute";
 
 const storageKeys = {
   provider: "geocode_provider",
@@ -753,6 +756,35 @@ const closeCustomSocket = () => {
   }
 };
 
+const fetchCustomToken = async () => {
+  if (customToken.value) {
+    return customToken.value;
+  }
+  const url = customTokenUrl.value || "getResAppDynamicToken";
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        appId: customAppId.value,
+        credential: customCredential.value,
+      }),
+    });
+    const body = await response.json();
+    if (!response.ok || body?.status?.statusCode !== "SUCCESS" || !body?.result) {
+      return "";
+    }
+    customToken.value = body.result;
+    return customToken.value;
+  } catch (error) {
+    return "";
+  }
+};
+
+  const { geocodeAddress } = useGeocode(provider, providerApiKey, customGeocodeUrl, fetchCustomToken, normalizeCoordinate, coordPairKey, cacheAndReturn, getPersistentCacheValue);
+  const { reverseGeocode } = useReverseGeocode(provider, providerApiKey, normalizeCoordinate, coordPairKey, cacheAndReturn, getPersistentCacheValue);
+  const { fetchRoute, decodeHerePolyline } = useRoute(provider, providerApiKey, customRouteUrl, fetchCustomToken, normalizeCoordinate, routePairKey, cacheAndReturn, getPersistentCacheValue);
+
 const startCustomGeocode = () => {
   if (!canStart.value) return;
   closeCustomSocket();
@@ -827,7 +859,7 @@ const startCustomGeocode = () => {
       const payload = message.payload || {};
       const address = payload.address || "-";
       geocodeState.current = address;
-      if (!Number.isFinite(messagePayload.processed)) {
+      if (!Number.isFinite(payload.processed)) {
         geocodeState.processed += 1;
       }
 
@@ -1798,481 +1830,6 @@ const handleStart = () => {
     }
   }
 };
-
-const geocodeAddress = async (address) => {
-  const requestKey = String(address ?? "").trim();
-  const persistentCached = getPersistentCacheValue("geocode", requestKey);
-  if (persistentCached) {
-    return persistentCached;
-  }
-
-  const encoded = encodeURIComponent(address);
-  if (provider.value === "custom") {
-    const token = await fetchCustomToken();
-    if (!token) {
-      return {
-        success: false,
-        type: "auth_error",
-        request: customTokenUrl.value || "getResAppDynamicToken",
-        response: "无法获取自定义接口 Token",
-      };
-    }
-    const url = customGeocodeUrl.value || "geographicSearch";
-    try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: token,
-        },
-        body: JSON.stringify({
-          address,
-          language: "en",
-          coordType: "wgs84",
-        }),
-      });
-      const body = await response.json();
-      if (!response.ok || body?.status !== "OK") {
-        return {
-          success: false,
-          type: "network_error",
-          request: url,
-          response: JSON.stringify(body),
-        };
-      }
-      const location = body?.result?.geometry?.location;
-      if (!location || location.lat == null || location.lng == null) {
-        return {
-          success: false,
-          type: "no_result",
-          request: url,
-          response: JSON.stringify(body),
-        };
-      }
-      const lat = normalizeCoordinate(location.lat);
-      const lng = normalizeCoordinate(location.lng);
-      return cacheAndReturn("geocode", requestKey, {
-        success: true,
-        lat,
-        lng,
-        key: coordPairKey(lat, lng),
-      });
-    } catch (error) {
-      return {
-        success: false,
-        type: "network_error",
-        request: url,
-        response: String(error),
-      };
-    }
-  }
-  if (provider.value === "mapbox") {
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${providerApiKey.value}`;
-    try {
-      const response = await fetch(url);
-      const body = await response.json();
-      if (!response.ok) {
-        return {
-          success: false,
-          type: "network_error",
-          request: url,
-          response: JSON.stringify(body),
-        };
-      }
-      if (!body.features || body.features.length === 0) {
-        return {
-          success: false,
-          type: "no_result",
-          request: url,
-          response: JSON.stringify(body),
-        };
-      }
-      const [lngRaw, latRaw] = body.features[0].center || [];
-      const lat = normalizeCoordinate(latRaw);
-      const lng = normalizeCoordinate(lngRaw);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-        return {
-          success: false,
-          type: "no_result",
-          request: url,
-          response: JSON.stringify(body),
-        };
-      }
-      return cacheAndReturn("geocode", requestKey, {
-        success: true,
-        lat,
-        lng,
-        key: coordPairKey(lat, lng),
-      });
-    } catch (error) {
-      return {
-        success: false,
-        type: "network_error",
-        request: url,
-        response: String(error),
-      };
-    }
-  }
-
-  const url = `https://geocode.search.hereapi.com/v1/geocode?q=${encoded}&apiKey=${providerApiKey.value}`;
-  try {
-    const response = await fetch(url);
-    const body = await response.json();
-    if (!response.ok) {
-      return {
-        success: false,
-        type: "network_error",
-        request: url,
-        response: JSON.stringify(body),
-      };
-    }
-    if (!body.items || body.items.length === 0) {
-      return {
-        success: false,
-        type: "no_result",
-        request: url,
-        response: JSON.stringify(body),
-      };
-    }
-    const { lat: latRaw, lng: lngRaw } = body.items[0].position || {};
-    const lat = normalizeCoordinate(latRaw);
-    const lng = normalizeCoordinate(lngRaw);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      return {
-        success: false,
-        type: "no_result",
-        request: url,
-        response: JSON.stringify(body),
-      };
-    }
-    return cacheAndReturn("geocode", requestKey, {
-      success: true,
-      lat,
-      lng,
-      key: coordPairKey(lat, lng),
-    });
-  } catch (error) {
-    return {
-      success: false,
-      type: "network_error",
-      request: url,
-      response: String(error),
-    };
-  }
-};
-
-const fetchCustomToken = async () => {
-  if (customToken.value) {
-    return customToken.value;
-  }
-  const url = customTokenUrl.value || "getResAppDynamicToken";
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        appId: customAppId.value,
-        credential: customCredential.value,
-      }),
-    });
-    const body = await response.json();
-    if (!response.ok || body?.status?.statusCode !== "SUCCESS" || !body?.result) {
-      return "";
-    }
-    customToken.value = body.result;
-    return customToken.value;
-  } catch (error) {
-    return "";
-  }
-};
-
-const reverseGeocode = async (lat, lng) => {
-  const normalizedLat = normalizeCoordinate(lat);
-  const normalizedLng = normalizeCoordinate(lng);
-  const requestKey = coordPairKey(normalizedLat, normalizedLng);
-  const persistentCached = requestKey
-    ? getPersistentCacheValue("reverse", requestKey)
-    : null;
-  if (persistentCached) {
-    return persistentCached;
-  }
-
-  if (provider.value === "mapbox") {
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${normalizedLng},${normalizedLat}.json?access_token=${providerApiKey.value}`;
-    try {
-      const response = await fetch(url);
-      const body = await response.json();
-      if (!response.ok) {
-        return {
-          success: false,
-          type: "network_error",
-          request: url,
-          response: JSON.stringify(body),
-        };
-      }
-      if (!body.features || body.features.length === 0) {
-        return {
-          success: false,
-          type: "no_result",
-          request: url,
-          response: JSON.stringify(body),
-        };
-      }
-      const feature = body.features[0];
-      const { admin1, admin2, admin3 } = extractMapboxAdmin(feature);
-      return cacheAndReturn("reverse", requestKey, {
-        success: true,
-        address: feature.place_name,
-        admin1,
-        admin2,
-        admin3,
-      });
-    } catch (error) {
-      return {
-        success: false,
-        type: "network_error",
-        request: url,
-        response: String(error),
-      };
-    }
-  }
-
-  const url = `https://revgeocode.search.hereapi.com/v1/revgeocode?at=${normalizedLat},${normalizedLng}&lang=zh-CN&apiKey=${providerApiKey.value}`;
-  try {
-    const response = await fetch(url);
-    const body = await response.json();
-    if (!response.ok) {
-      return {
-        success: false,
-        type: "network_error",
-        request: url,
-        response: JSON.stringify(body),
-      };
-    }
-    if (!body.items || body.items.length === 0) {
-      return {
-        success: false,
-        type: "no_result",
-        request: url,
-        response: JSON.stringify(body),
-      };
-    }
-    const address = body.items[0].address || {};
-    return cacheAndReturn("reverse", requestKey, {
-      success: true,
-      address: body.items[0].title || "",
-      admin1: address.state || address.province || "",
-      admin2: address.city || address.county || "",
-      admin3: address.district || address.subdistrict || address.county || "",
-    });
-  } catch (error) {
-    return {
-      success: false,
-      type: "network_error",
-      request: url,
-      response: String(error),
-    };
-  }
-};
-
-const fetchRoute = async (originLat, originLng, destLat, destLng) => {
-  const normalizedOriginLat = normalizeCoordinate(originLat);
-  const normalizedOriginLng = normalizeCoordinate(originLng);
-  const normalizedDestLat = normalizeCoordinate(destLat);
-  const normalizedDestLng = normalizeCoordinate(destLng);
-  const pairKey = routePairKey(
-    normalizedOriginLat,
-    normalizedOriginLng,
-    normalizedDestLat,
-    normalizedDestLng
-  );
-  const persistentCached = pairKey ? getPersistentCacheValue("route", pairKey) : null;
-  if (persistentCached) {
-    return persistentCached;
-  }
-
-  if (provider.value === "mapbox") {
-    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${normalizedOriginLng},${normalizedOriginLat};${normalizedDestLng},${normalizedDestLat}?geometries=geojson&overview=full&access_token=${providerApiKey.value}`;
-    try {
-      const response = await fetch(url);
-      const body = await response.json();
-      if (!response.ok) {
-        return {
-          success: false,
-          type: "network_error",
-          request: url,
-          response: JSON.stringify(body),
-        };
-      }
-      if (!body.routes || body.routes.length === 0) {
-        return {
-          success: false,
-          type: "no_result",
-          request: url,
-          response: JSON.stringify(body),
-        };
-      }
-      const route = body.routes[0];
-      const geometry = route.geometry
-        ? {
-            ...route.geometry,
-            coordinates: (route.geometry.coordinates || []).map((coord) => [
-              normalizeCoordinate(coord?.[0]),
-              normalizeCoordinate(coord?.[1]),
-            ]),
-          }
-        : null;
-
-      return cacheAndReturn("route", pairKey, {
-        success: true,
-        distanceKm: (route.distance / 1000).toFixed(2),
-        durationMin: Math.round(route.duration / 60),
-        line: geometry,
-        origin: { lat: normalizedOriginLat, lng: normalizedOriginLng },
-        destination: { lat: normalizedDestLat, lng: normalizedDestLng },
-        key: pairKey,
-      });
-    } catch (error) {
-      return {
-        success: false,
-        type: "network_error",
-        request: url,
-        response: String(error),
-      };
-    }
-  }
-
-  const url = `https://router.hereapi.com/v8/routes?transportMode=car&origin=${normalizedOriginLat},${normalizedOriginLng}&destination=${normalizedDestLat},${normalizedDestLng}&return=summary,polyline&apiKey=${providerApiKey.value}`;
-  try {
-    const response = await fetch(url);
-    const body = await response.json();
-    if (!response.ok) {
-      return {
-        success: false,
-        type: "network_error",
-        request: url,
-        response: JSON.stringify(body),
-      };
-    }
-    if (!body.routes || body.routes.length === 0) {
-      return {
-        success: false,
-        type: "no_result",
-        request: url,
-        response: JSON.stringify(body),
-      };
-    }
-    const route = body.routes[0];
-    const summary = route.sections?.[0]?.summary;
-    const polyline = route.sections?.[0]?.polyline;
-    const geometry = polyline ? decodeHerePolyline(polyline) : null;
-    return cacheAndReturn("route", pairKey, {
-      success: true,
-      distanceKm: summary ? (summary.length / 1000).toFixed(2) : "",
-      durationMin: summary ? Math.round(summary.duration / 60) : "",
-      line: geometry,
-      origin: { lat: normalizedOriginLat, lng: normalizedOriginLng },
-      destination: { lat: normalizedDestLat, lng: normalizedDestLng },
-      key: pairKey,
-    });
-  } catch (error) {
-    return {
-      success: false,
-      type: "network_error",
-      request: url,
-      response: String(error),
-    };
-  }
-};
-
-const extractMapboxAdmin = (feature) => {
-  const context = feature.context || [];
-  const place = context.find((item) => item.id?.startsWith("place"))?.text || "";
-  const district = context.find((item) => item.id?.startsWith("district"))?.text || "";
-  const region = context.find((item) => item.id?.startsWith("region"))?.text || "";
-  const locality = context.find((item) => item.id?.startsWith("locality"))?.text || "";
-  return {
-    admin1: region || place || "",
-    admin2: place || locality || "",
-    admin3: district || locality || "",
-  };
-};
-
-const decodeHerePolyline = (polyline) => {
-  const decoder = new HerePolylineDecoder(polyline);
-  const coordinates = [];
-  while (decoder.hasNext()) {
-    const { lat, lng } = decoder.next();
-    coordinates.push([normalizeCoordinate(lng), normalizeCoordinate(lat)]);
-  }
-  return {
-    type: "LineString",
-    coordinates,
-  };
-};
-
-class HerePolylineDecoder {
-  constructor(encoded) {
-    this.encoded = encoded;
-    this.index = 0;
-    this.lat = 0;
-    this.lng = 0;
-    this.z = 0;
-    this.precision = 5;
-    this.thirdDim = 0;
-    this.thirdDimPrecision = 0;
-    this.headerDecoded = false;
-  }
-
-  hasNext() {
-    if (!this.headerDecoded) {
-      this.decodeHeader();
-    }
-    return this.index < this.encoded.length;
-  }
-
-  next() {
-    if (!this.headerDecoded) {
-      this.decodeHeader();
-    }
-    this.lat += this.decodeSigned();
-    this.lng += this.decodeSigned();
-    if (this.thirdDim) {
-      this.z += this.decodeSigned();
-    }
-    return {
-      lat: this.lat / Math.pow(10, this.precision),
-      lng: this.lng / Math.pow(10, this.precision),
-    };
-  }
-
-  decodeHeader() {
-    const header = this.decodeUnsigned();
-    this.precision = header & 15;
-    this.thirdDim = (header >> 4) & 7;
-    this.thirdDimPrecision = (header >> 7) & 15;
-    this.headerDecoded = true;
-  }
-
-  decodeUnsigned() {
-    let result = 0;
-    let shift = 0;
-    while (this.index < this.encoded.length) {
-      const value = this.encoded.charCodeAt(this.index++) - 63;
-      result |= (value & 31) << shift;
-      if (value < 32) {
-        return result;
-      }
-      shift += 5;
-    }
-    return result;
-  }
-
-  decodeSigned() {
-    const result = this.decodeUnsigned();
-    return result & 1 ? ~(result >> 1) : result >> 1;
-  }
-}
 
 const downloadExcel = () => {
   const outputHeaders = getOutputHeaders();
