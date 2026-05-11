@@ -18,5 +18,5 @@ class CustomProvider(Provider):
         return await route(http_client, auth, config, origin, destination)
 
 
-    async def route_matrix(self, http_client, auth, config, routes):
-        return await route_matrix(http_client, auth, config, routes)
+    async def route_matrix(self, http_client, auth, config, routes, progress_callback=None):
+        return await route_matrix(http_client, auth, config, routes, progress_callback=progress_callback)

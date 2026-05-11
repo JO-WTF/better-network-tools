@@ -97,7 +97,7 @@ async def _call_matrix_batch(http_client, route_url, headers, origins, destinati
     return status, data, _parse_matrix_response(data, origins, destinations)
 
 
-async def route_matrix(http_client, auth, config, routes):
+async def route_matrix(http_client, auth, config, routes, progress_callback=None):
     route_url = config.get("routeUrl")
     if not route_url:
         return error_result("config_error", "routeUrl", "缺少导航接口地址")
@@ -200,6 +200,10 @@ async def route_matrix(http_client, auth, config, routes):
                         })
             if batch_payload:
                 streamed_batches.append(batch_payload)
+                if progress_callback:
+                    maybe = progress_callback(batch_payload)
+                    if hasattr(maybe, "__await__"):
+                        await maybe
 
             if status != 200:
                 last_error = (status, data)

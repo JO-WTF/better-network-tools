@@ -115,6 +115,28 @@ class WebSocketHandler:
                             "results": invalid_payloads,
                         }))
 
+                    async def _emit_matrix_batch(batch_items):
+                        nonlocal processed_count
+                        batch_payloads = [{
+                            "index": item.get("index"),
+                            "success": item.get("success"),
+                            "distanceKm": item.get("distanceKm"),
+                            "durationMin": item.get("durationMin"),
+                            "errorType": item.get("errorType"),
+                            "request": item.get("request"),
+                            "response": item.get("response"),
+                            "originLat": item.get("originLat"),
+                            "originLng": item.get("originLng"),
+                            "destinationLat": item.get("destinationLat"),
+                            "destinationLng": item.get("destinationLng"),
+                        } for item in (batch_items or [])]
+                        if batch_payloads:
+                            processed_count += len(batch_payloads)
+                            await websocket.send(progress({
+                                "processed": processed_count,
+                                "results": batch_payloads,
+                            }))
+
                     matrix_result = await self.route_matrix_service.execute(
                         http_client,
                         config,
@@ -123,6 +145,7 @@ class WebSocketHandler:
                             "origin": item["origin"],
                             "destination": item["destination"],
                         } for item in indexed_routes],
+                        progress_callback=_emit_matrix_batch,
                     )
 
                     if not matrix_result.get("success"):
@@ -143,28 +166,6 @@ class WebSocketHandler:
                                 "processed": processed_count,
                                 "results": failure_payloads,
                             }))
-                    else:
-                        batched_results = matrix_result.get("batches") or [matrix_result.get("results", [])]
-                        for batch_items in batched_results:
-                            batch_payloads = [{
-                                "index": item.get("index"),
-                                "success": item.get("success"),
-                                "distanceKm": item.get("distanceKm"),
-                                "durationMin": item.get("durationMin"),
-                                "errorType": item.get("errorType"),
-                                "request": item.get("request"),
-                                "response": item.get("response"),
-                                "originLat": item.get("originLat"),
-                                "originLng": item.get("originLng"),
-                                "destinationLat": item.get("destinationLat"),
-                                "destinationLng": item.get("destinationLng"),
-                            } for item in batch_items]
-                            if batch_payloads:
-                                processed_count += len(batch_payloads)
-                                await websocket.send(progress({
-                                    "processed": processed_count,
-                                    "results": batch_payloads,
-                                }))
                 elif mode == "route":
                     for index, route in enumerate(routes, start=1):
                         try:
