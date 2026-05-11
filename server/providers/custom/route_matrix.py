@@ -47,7 +47,7 @@ def _parse_matrix_response(data, origins, destinations):
     payload_data = data.get("data")
     matrix_results = payload_data.get("matrixResults") if isinstance(payload_data, dict) else None
     result_items = matrix_results or data.get("results") or []
-    for item in result_items:
+    for idx, item in enumerate(result_items):
         origin = item.get("origin", "")
         destination = item.get("destination", "")
         origin_id = ori_lookup.get(origin)
@@ -60,6 +60,11 @@ def _parse_matrix_response(data, origins, destinations):
                 origin_id = ori_lookup.get(_fmt_latlng(normalized_origin[0], normalized_origin[1]))
             if normalized_destination:
                 destination_id = dst_lookup.get(_fmt_latlng(normalized_destination[0], normalized_destination[1]))
+
+
+        if (origin_id is None or destination_id is None) and len(origins) == 1 and idx < len(destinations):
+            origin_id = origins[0].get("id")
+            destination_id = destinations[idx].get("id")
 
         if origin_id is None or destination_id is None:
             continue
@@ -128,6 +133,11 @@ async def route_matrix(http_client, auth, config, routes, progress_callback=None
         destination_key = _fmt_latlng(*destination)
         origin_id = point_id_lookup.get(origin_key)
         destination_id = point_id_lookup.get(destination_key)
+
+        if (origin_id is None or destination_id is None) and len(origins) == 1 and idx < len(destinations):
+            origin_id = origins[0].get("id")
+            destination_id = destinations[idx].get("id")
+
         if origin_id is None or destination_id is None:
             continue
         pair_key = (origin_id, destination_id)
