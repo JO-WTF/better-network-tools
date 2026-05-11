@@ -16,11 +16,20 @@ def _normalize_coord(value: str):
     if len(parts) < 2:
         return None
     try:
-        lng = round(float(parts[0]), 6)
-        lat = round(float(parts[1]), 6)
+        first = round(float(parts[0]), 6)
+        second = round(float(parts[1]), 6)
     except ValueError:
         return None
-    return lat, lng
+
+    # 优先按 lat,lng 解析（与 server 内部坐标字符串保持一致）
+    if -90 <= first <= 90 and -180 <= second <= 180:
+        return first, second
+
+    # 兼容历史 lng,lat 输入
+    if -180 <= first <= 180 and -90 <= second <= 90:
+        return second, first
+
+    return None
 
 
 def _fmt_latlng(lat: float, lng: float) -> str:
