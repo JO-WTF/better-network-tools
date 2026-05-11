@@ -122,19 +122,23 @@ async def route_matrix(http_client, auth, config, routes):
 
     missing_pairs = set()
     grouped_destinations = defaultdict(set)
-    for _, origin, destination in route_pairs:
+    pair_to_rows = defaultdict(list)
+    for row_index, origin, destination in route_pairs:
         origin_key = _fmt_latlng(*origin)
         destination_key = _fmt_latlng(*destination)
         origin_id = point_id_lookup.get(origin_key)
         destination_id = point_id_lookup.get(destination_key)
         if origin_id is None or destination_id is None:
             continue
-        missing_pairs.add((origin_id, destination_id))
+        pair_key = (origin_id, destination_id)
+        missing_pairs.add(pair_key)
         grouped_destinations[origin_id].add(destination_id)
+        pair_to_rows[pair_key].append((row_index, origin, destination))
 
     headers = auth_headers(auth)
     parsed = {}
     last_error = None
+    streamed_batches = []
 
     for origin_id, destination_ids in grouped_destinations.items():
         destination_ids = list(destination_ids)
@@ -166,6 +170,36 @@ async def route_matrix(http_client, auth, config, routes):
                         origin_point,
                         destination_points,
                     )
+
+            batch_payload = []
+            for destination_id in batch_destination_ids:
+                for row_index, origin, destination in pair_to_rows.get((origin_id, destination_id), []):
+                    result_item = batch_parsed.get((origin_id, destination_id)) if status == 200 else None
+                    if result_item:
+                        batch_payload.append({
+                            "index": row_index,
+                            "success": True,
+                            "distanceKm": result_item["distanceKm"],
+                            "durationMin": result_item["durationMin"],
+                            "originLat": origin[0],
+                            "originLng": origin[1],
+                            "destinationLat": destination[0],
+                            "destinationLng": destination[1],
+                        })
+                    else:
+                        batch_payload.append({
+                            "index": row_index,
+                            "success": False,
+                            "errorType": "no_result" if status == 200 else "network_error",
+                            "request": route_url,
+                            "response": safe_json_dumps(data) if status != 200 else "无可用路径结果",
+                            "originLat": origin[0],
+                            "originLng": origin[1],
+                            "destinationLat": destination[0],
+                            "destinationLng": destination[1],
+                        })
+            if batch_payload:
+                streamed_batches.append(batch_payload)
 
             if status != 200:
                 last_error = (status, data)
@@ -206,4 +240,5 @@ async def route_matrix(http_client, auth, config, routes):
     return {
         "success": True,
         "results": results,
+        "batches": streamed_batches,
     }
