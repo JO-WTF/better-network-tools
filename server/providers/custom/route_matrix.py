@@ -66,6 +66,10 @@ def _parse_matrix_response(data, origins, destinations):
 
 
 
+        if (origin_id is None or destination_id is None) and len(origins) == 1 and idx < len(destinations):
+            origin_id = origins[0].get("id")
+            destination_id = destinations[idx].get("id")
+
         if origin_id is None or destination_id is None:
             continue
 
@@ -135,6 +139,10 @@ async def route_matrix(http_client, auth, config, routes, progress_callback=None
         origin_id = point_id_lookup.get(origin_key)
         destination_id = point_id_lookup.get(destination_key)
 
+
+        if (origin_id is None or destination_id is None) and len(origins) == 1 and idx < len(destinations):
+            origin_id = origins[0].get("id")
+            destination_id = destinations[idx].get("id")
 
         if origin_id is None or destination_id is None:
             continue
