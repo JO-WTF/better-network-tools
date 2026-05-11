@@ -1,9 +1,12 @@
+import logging
 import json
 
 from server.transport.websocket.connection_context import ConnectionContext
 from server.transport.websocket.request_parser import parse_ws_message
 from server.transport.websocket.response_builder import complete, progress
 from server.utils.coords import format_coord_pair, parse_coordinate, round_coord
+
+logger = logging.getLogger(__name__)
 
 
 class WebSocketHandler:
@@ -132,6 +135,7 @@ class WebSocketHandler:
                         } for item in (batch_items or [])]
                         if batch_payloads:
                             processed_count += len(batch_payloads)
+                            logger.info("ws matrix progress: send batch size=%d processed=%d", len(batch_payloads), processed_count)
                             await websocket.send(progress({
                                 "processed": processed_count,
                                 "results": batch_payloads,

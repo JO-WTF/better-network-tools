@@ -1,8 +1,11 @@
+import logging
 from collections import defaultdict
 
 from server.providers.common.request_builder import auth_headers
 from server.providers.common.result_builder import error_result
 from server.utils.json_utils import safe_json_dumps
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_coord(value: str):
@@ -62,9 +65,6 @@ def _parse_matrix_response(data, origins, destinations):
                 destination_id = dst_lookup.get(_fmt_latlng(normalized_destination[0], normalized_destination[1]))
 
 
-        if (origin_id is None or destination_id is None) and len(origins) == 1 and idx < len(destinations):
-            origin_id = origins[0].get("id")
-            destination_id = destinations[idx].get("id")
 
         if origin_id is None or destination_id is None:
             continue
@@ -119,6 +119,7 @@ async def route_matrix(http_client, auth, config, routes, progress_callback=None
         route_pairs.append((item.get("index"), origin, destination))
 
     if not route_pairs:
+        logger.info("route_matrix: no valid route pairs after normalization")
         return {"success": True, "results": []}
 
     points = list(point_lookup.values())
@@ -134,9 +135,6 @@ async def route_matrix(http_client, auth, config, routes, progress_callback=None
         origin_id = point_id_lookup.get(origin_key)
         destination_id = point_id_lookup.get(destination_key)
 
-        if (origin_id is None or destination_id is None) and len(origins) == 1 and idx < len(destinations):
-            origin_id = origins[0].get("id")
-            destination_id = destinations[idx].get("id")
 
         if origin_id is None or destination_id is None:
             continue
@@ -150,6 +148,7 @@ async def route_matrix(http_client, auth, config, routes, progress_callback=None
     last_error = None
     streamed_batches = []
 
+    logger.info("route_matrix: start batches, routes=%d origins=%d", len(route_pairs), len(grouped_destinations))
     for origin_id, destination_ids in grouped_destinations.items():
         destination_ids = list(destination_ids)
         origin_point = [points_with_id[origin_id]]
@@ -165,6 +164,7 @@ async def route_matrix(http_client, auth, config, routes, progress_callback=None
                 destination_points,
             )
 
+            logger.debug("route_matrix: request batch origin_id=%s dest_count=%d status=%s", origin_id, len(batch_destination_ids), status)
             if status == 401:
                 refreshed_auth = config.get("token")
                 if not refreshed_auth:
@@ -209,6 +209,14 @@ async def route_matrix(http_client, auth, config, routes, progress_callback=None
                             "destinationLng": destination[1],
                         })
             if batch_payload:
+                success_count = sum(1 for x in batch_payload if x.get("success"))
+                logger.info(
+                    "route_matrix: batch ready origin_id=%s size=%d success=%d fail=%d",
+                    origin_id,
+                    len(batch_payload),
+                    success_count,
+                    len(batch_payload) - success_count,
+                )
                 streamed_batches.append(batch_payload)
                 if progress_callback:
                     maybe = progress_callback(batch_payload)
@@ -251,6 +259,7 @@ async def route_matrix(http_client, auth, config, routes, progress_callback=None
                 "destinationLng": destination[1],
             })
 
+    logger.info("route_matrix: completed results=%d batches=%d", len(results), len(streamed_batches))
     return {
         "success": True,
         "results": results,
