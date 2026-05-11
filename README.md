@@ -18,3 +18,14 @@ View your app in AI Studio: https://ai.studio/apps/15d643b5-564b-4fee-91af-4f0dc
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+
+## Backend 启动
+
+后端在 `server/` 目录下，快速启动：
+
+```bash
+python -m server.app
+```
+
+更完整的后端启动说明见：`server/README.md`。
