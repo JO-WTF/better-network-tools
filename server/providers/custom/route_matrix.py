@@ -44,7 +44,9 @@ def _parse_matrix_response(data, origins, destinations):
     ori_lookup = {_fmt_latlng(item["lat"], item["lng"]): item["id"] for item in origins}
     dst_lookup = {_fmt_latlng(item["lat"], item["lng"]): item["id"] for item in destinations}
 
-    result_items = data.get("data", {}).get("matrixResults") or data.get("results") or []
+    payload_data = data.get("data")
+    matrix_results = payload_data.get("matrixResults") if isinstance(payload_data, dict) else None
+    result_items = matrix_results or data.get("results") or []
     for item in result_items:
         origin = item.get("origin", "")
         destination = item.get("destination", "")
