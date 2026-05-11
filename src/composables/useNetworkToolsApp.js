@@ -1026,9 +1026,8 @@ const startCustomRoute = () => {
 
     if (message.type === "progress") {
       const messagePayload = message.payload || {};
-      const payloads = Array.isArray(messagePayload.results)
-        ? messagePayload.results
-        : [messagePayload];
+      const isBatchPayload = Array.isArray(messagePayload.results);
+      const payloads = isBatchPayload ? messagePayload.results : [messagePayload];
 
       if (Number.isFinite(messagePayload.processed)) {
         geocodeState.processed = messagePayload.processed;
@@ -1043,7 +1042,7 @@ const startCustomRoute = () => {
 
       if (Number.isFinite(payload.processed)) {
         geocodeState.processed = payload.processed;
-      } else {
+      } else if (!isBatchPayload) {
         geocodeState.processed += 1;
       }
 

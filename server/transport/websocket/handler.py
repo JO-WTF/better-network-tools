@@ -96,9 +96,9 @@ class WebSocketHandler:
                                 "destination_coords": destination_coords,
                             })
 
-                    for item in invalid_items:
-                        await websocket.send(progress({
-                            "processed": item["index"],
+                    processed_count = 0
+                    if invalid_items:
+                        invalid_payloads = [{
                             "index": item["index"] - 1,
                             "success": False,
                             "errorType": item["result"].get("errorType"),
@@ -108,6 +108,11 @@ class WebSocketHandler:
                             "originLng": item["origin_coords"][1] if item["origin_coords"] else None,
                             "destinationLat": item["destination_coords"][0] if item["destination_coords"] else None,
                             "destinationLng": item["destination_coords"][1] if item["destination_coords"] else None,
+                        } for item in invalid_items]
+                        processed_count += len(invalid_payloads)
+                        await websocket.send(progress({
+                            "processed": processed_count,
+                            "results": invalid_payloads,
                         }))
 
                     matrix_result = await self.route_matrix_service.execute(
@@ -121,34 +126,42 @@ class WebSocketHandler:
                     )
 
                     if not matrix_result.get("success"):
-                        for item in indexed_routes:
+                        failure_payloads = [{
+                            "index": item["index"] - 1,
+                            "success": False,
+                            "errorType": matrix_result.get("errorType", "network_error"),
+                            "request": matrix_result.get("request", "route_matrix"),
+                            "response": matrix_result.get("response", "请求失败"),
+                            "originLat": item["origin_coords"][0] if item["origin_coords"] else None,
+                            "originLng": item["origin_coords"][1] if item["origin_coords"] else None,
+                            "destinationLat": item["destination_coords"][0] if item["destination_coords"] else None,
+                            "destinationLng": item["destination_coords"][1] if item["destination_coords"] else None,
+                        } for item in indexed_routes]
+                        processed_count += len(failure_payloads)
+                        if failure_payloads:
                             await websocket.send(progress({
-                                "processed": item["index"],
-                                "index": item["index"] - 1,
-                                "success": False,
-                                "errorType": matrix_result.get("errorType", "network_error"),
-                                "request": matrix_result.get("request", "route_matrix"),
-                                "response": matrix_result.get("response", "请求失败"),
-                                "originLat": item["origin_coords"][0] if item["origin_coords"] else None,
-                                "originLng": item["origin_coords"][1] if item["origin_coords"] else None,
-                                "destinationLat": item["destination_coords"][0] if item["destination_coords"] else None,
-                                "destinationLng": item["destination_coords"][1] if item["destination_coords"] else None,
+                                "processed": processed_count,
+                                "results": failure_payloads,
                             }))
                     else:
-                        for item in matrix_result.get("results", []):
+                        batch_payloads = [{
+                            "index": item.get("index"),
+                            "success": item.get("success"),
+                            "distanceKm": item.get("distanceKm"),
+                            "durationMin": item.get("durationMin"),
+                            "errorType": item.get("errorType"),
+                            "request": item.get("request"),
+                            "response": item.get("response"),
+                            "originLat": item.get("originLat"),
+                            "originLng": item.get("originLng"),
+                            "destinationLat": item.get("destinationLat"),
+                            "destinationLng": item.get("destinationLng"),
+                        } for item in matrix_result.get("results", [])]
+                        processed_count += len(batch_payloads)
+                        if batch_payloads:
                             await websocket.send(progress({
-                                "processed": int(item.get("index", 0)) + 1,
-                                "index": item.get("index"),
-                                "success": item.get("success"),
-                                "distanceKm": item.get("distanceKm"),
-                                "durationMin": item.get("durationMin"),
-                                "errorType": item.get("errorType"),
-                                "request": item.get("request"),
-                                "response": item.get("response"),
-                                "originLat": item.get("originLat"),
-                                "originLng": item.get("originLng"),
-                                "destinationLat": item.get("destinationLat"),
-                                "destinationLng": item.get("destinationLng"),
+                                "processed": processed_count,
+                                "results": batch_payloads,
                             }))
                 elif mode == "route":
                     for index, route in enumerate(routes, start=1):
