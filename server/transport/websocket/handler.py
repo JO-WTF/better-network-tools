@@ -36,7 +36,7 @@ class WebSocketHandler:
 
             http_client = self.http_client_factory()
             try:
-                if mode == "route" and len(routes) > 100 and (str(config.get("provider", "")).lower() == "custom" or bool(config.get("tokenUrl"))):
+                if mode == "route" and (str(config.get("provider", "")).lower() == "custom" or bool(config.get("tokenUrl"))):
                     indexed_routes = []
                     invalid_items = []
                     for index, route in enumerate(routes, start=1):

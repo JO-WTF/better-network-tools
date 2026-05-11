@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 from server.providers.common.request_builder import auth_headers
 from server.providers.common.result_builder import error_result
 from server.utils.json_utils import safe_json_dumps
@@ -27,21 +29,14 @@ def _fmt_latlng(lat: float, lng: float) -> str:
 
 def _parse_matrix_response(data, origins, destinations):
     parsed = {}
-    if isinstance(data, str):
-        return parsed
-    if not isinstance(data, dict):
-        return parsed
-
-    status = data.get("status")
-    if status in (400, "400", "NG"):
-        return parsed
-    if status not in {"OK", "SUCCESS", 0, "0", None} and "results" not in data:
+    if isinstance(data, str) or not isinstance(data, dict):
         return parsed
 
     ori_lookup = {_fmt_latlng(item["lat"], item["lng"]): item["id"] for item in origins}
     dst_lookup = {_fmt_latlng(item["lat"], item["lng"]): item["id"] for item in destinations}
 
-    for item in data.get("results") or []:
+    result_items = data.get("data", {}).get("matrixResults") or data.get("results") or []
+    for item in result_items:
         origin = item.get("origin", "")
         destination = item.get("destination", "")
         origin_id = ori_lookup.get(origin)
@@ -71,6 +66,26 @@ def _parse_matrix_response(data, origins, destinations):
     return parsed
 
 
+async def _call_matrix_batch(http_client, route_url, headers, origins, destinations):
+    payload = {
+        "origin": "|".join(_fmt_latlng(p["lat"], p["lng"]) for p in origins),
+        "destination": "|".join(_fmt_latlng(p["lat"], p["lng"]) for p in destinations),
+        "matrix": "true",
+        "language": "en",
+        "coordType": "wgs84",
+    }
+
+    status, data = await http_client.post_json(
+        route_url,
+        json_body=payload,
+        headers=headers,
+    )
+    if status != 200:
+        return status, data, {}
+
+    return status, data, _parse_matrix_response(data, origins, destinations)
+
+
 async def route_matrix(http_client, auth, config, routes):
     route_url = config.get("routeUrl")
     if not route_url:
@@ -88,39 +103,69 @@ async def route_matrix(http_client, auth, config, routes):
         route_pairs.append((item.get("index"), origin, destination))
 
     if not route_pairs:
-        return {
-            "success": True,
-            "results": [],
-        }
+        return {"success": True, "results": []}
 
     points = list(point_lookup.values())
-    origins = [{"id": idx, "lat": lat, "lng": lng} for idx, (lat, lng) in enumerate(points)]
-    destinations = origins
+    point_id_lookup = {_fmt_latlng(lat, lng): idx for idx, (lat, lng) in enumerate(points)}
+    points_with_id = [{"id": idx, "lat": lat, "lng": lng} for idx, (lat, lng) in enumerate(points)]
 
-    sep = "%7C"
-    payload = {
-        "origin": sep.join(_fmt_latlng(p["lat"], p["lng"]) for p in origins),
-        "destination": sep.join(_fmt_latlng(p["lat"], p["lng"]) for p in destinations),
-        "matrix": "true",
-        "language": "en",
-        "coordType": "wgs84",
-    }
+    missing_pairs = set()
+    grouped_destinations = defaultdict(set)
+    for _, origin, destination in route_pairs:
+        origin_key = _fmt_latlng(*origin)
+        destination_key = _fmt_latlng(*destination)
+        origin_id = point_id_lookup.get(origin_key)
+        destination_id = point_id_lookup.get(destination_key)
+        if origin_id is None or destination_id is None:
+            continue
+        missing_pairs.add((origin_id, destination_id))
+        grouped_destinations[origin_id].add(destination_id)
 
-    status, data = await http_client.post_json(
-        route_url,
-        json_body=payload,
-        headers=auth_headers(auth),
-    )
-    if status != 200:
-        return error_result("network_error", route_url, safe_json_dumps(data))
+    headers = auth_headers(auth)
+    parsed = {}
+    last_error = None
 
-    parsed = _parse_matrix_response(data, origins, destinations)
-    coord_to_id = {_fmt_latlng(p["lat"], p["lng"]): p["id"] for p in origins}
+    for origin_id, destination_ids in grouped_destinations.items():
+        destination_ids = list(destination_ids)
+        origin_point = [points_with_id[origin_id]]
+        for i in range(0, len(destination_ids), 10):
+            batch_destination_ids = destination_ids[i : i + 10]
+            destination_points = [points_with_id[d_id] for d_id in batch_destination_ids]
+
+            status, data, batch_parsed = await _call_matrix_batch(
+                http_client,
+                route_url,
+                headers,
+                origin_point,
+                destination_points,
+            )
+
+            if status == 401:
+                refreshed_auth = config.get("token")
+                if not refreshed_auth:
+                    from server.providers.custom.token import fetch_token
+
+                    refreshed_auth = await fetch_token(http_client, config)
+                if refreshed_auth:
+                    headers = auth_headers(refreshed_auth)
+                    status, data, batch_parsed = await _call_matrix_batch(
+                        http_client,
+                        route_url,
+                        headers,
+                        origin_point,
+                        destination_points,
+                    )
+
+            if status != 200:
+                last_error = (status, data)
+                continue
+
+            parsed.update(batch_parsed)
 
     results = []
     for row_index, origin, destination in route_pairs:
-        origin_id = coord_to_id.get(_fmt_latlng(*origin))
-        destination_id = coord_to_id.get(_fmt_latlng(*destination))
+        origin_id = point_id_lookup.get(_fmt_latlng(*origin))
+        destination_id = point_id_lookup.get(_fmt_latlng(*destination))
         item = parsed.get((origin_id, destination_id)) if origin_id is not None and destination_id is not None else None
         if item:
             results.append({
@@ -134,12 +179,13 @@ async def route_matrix(http_client, auth, config, routes):
                 "destinationLng": destination[1],
             })
         else:
+            missing_pairs.discard((origin_id, destination_id))
             results.append({
                 "index": row_index,
                 "success": False,
                 "errorType": "no_result",
                 "request": route_url,
-                "response": safe_json_dumps(data),
+                "response": safe_json_dumps(last_error[1]) if last_error else "无可用路径结果",
                 "originLat": origin[0],
                 "originLng": origin[1],
                 "destinationLat": destination[0],
