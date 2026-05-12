@@ -24,11 +24,7 @@ def _normalize_coord(value: str):
     except ValueError:
         return None
 
-    # 仅按输入顺序解析为 lat,lng，不做经纬度互换
-    if -90 <= first <= 90 and -180 <= second <= 180:
-        return first, second
-
-    return None
+    return first, second
 
 
 def _fmt_latlng(lat: float, lng: float) -> str:
