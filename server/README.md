@@ -45,19 +45,13 @@ python app.py
 
 ## 5) 本地调试 custom 距离矩阵（CSV）
 
-可直接用 custom 接口计算某个 CSV 文件中的起终点路线：
+直接编辑 `server/debug_route_matrix.py` 末尾 `if __name__ == "__main__":` 的本地参数，然后运行：
 
 ```bash
-python -m server.debug_route_matrix \
-  --input ./data/routes.csv \
-  --start-col 起点 \
-  --end-col 终点 \
-  --input-mode coordinate \
-  --config-file ./config.json
+python -m server.debug_route_matrix
 ```
 
 说明：
-- `--config-file` 默认读取当前目录 `config.json`，包含 `appId`、`credential`、`tokenUrl`、`routeUrl`、`geocodeUrl`。
-- `--input-mode coordinate` 时，起终点列为坐标字符串（兼容 `lng,lat` / `lat,lng`）。
-- `--output` 为空时，自动输出为与输入同目录的 `calculated_<输入文件名>`。
+- 仍保留 `config.json` 读取设计，需在 `CONFIG_FILE` 指向的文件中提供：`appId`、`credential`、`tokenUrl`、`routeUrl`、`geocodeUrl`。
+- `OUTPUT_FILE` 为空时，自动输出为与输入同目录的 `calculated_<输入文件名>`。
 - 输出文件会追加 `导航距离(km)`、`导航时间(min)`，失败时附带错误列。
