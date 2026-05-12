@@ -32,3 +32,21 @@ python -m server.app
 
 
 本地文件调试可直接运行：`python debug_route_matrix.py`（读取 `config.json`）。
+
+
+### 前端启动常见错误
+
+若执行 `npm run dev` 出现：`Cannot find package 'vite'`，说明前端依赖未正确安装。
+
+请在仓库根目录执行：
+
+```bash
+npm install
+```
+
+若仍报错，再执行：
+
+```bash
+rm -rf node_modules package-lock.json
+npm install
+```
