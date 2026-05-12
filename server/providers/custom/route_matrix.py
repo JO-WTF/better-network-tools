@@ -956,120 +956,163 @@ async def route_matrix(http_client, auth, config, routes, progress_callback=None
         len(request_batches),
     )
 
+    worker_count = max(1, int(config.get("matrixWorkerCount", 1)))
+
+    logger.info(
+        "route_matrix: execute planned batches with workers=%d total_batches=%d",
+        worker_count,
+        len(request_batches),
+    )
+
+    headers_state = {"headers": headers}
+    state_lock = __import__("asyncio").Lock()
+    refresh_lock = __import__("asyncio").Lock()
+    callback_lock = __import__("asyncio").Lock()
+    batch_queue = __import__("asyncio").Queue()
+
     for batch_index, batch in enumerate(request_batches, start=1):
-        origin_ids = batch["origins"]
-        destination_ids = batch["destinations"]
-        covered_pairs = batch["covered_pairs"]
+        batch_queue.put_nowait((batch_index, batch))
 
-        origin_points = [
-            points_with_id[o_id]
-            for o_id in origin_ids
-        ]
+    async def _run_worker(worker_id: int):
+        nonlocal last_error
 
-        destination_points = [
-            points_with_id[d_id]
-            for d_id in destination_ids
-        ]
+        while True:
+            try:
+                batch_index, batch = batch_queue.get_nowait()
+            except __import__("asyncio").QueueEmpty:
+                return
 
-        status, data, batch_parsed = await _call_matrix_batch(
-            http_client,
-            route_url,
-            headers,
-            origin_points,
-            destination_points,
-        )
+            try:
+                origin_ids = batch["origins"]
+                destination_ids = batch["destinations"]
+                covered_pairs = batch["covered_pairs"]
 
-        logger.debug(
-            "route_matrix: request batch index=%d type=%s origins=%d destinations=%d "
-            "valid=%d matrix_size=%d density=%.3f status=%s",
-            batch_index,
-            batch["type"],
-            len(origin_ids),
-            len(destination_ids),
-            batch["valid"],
-            batch["matrix_size"],
-            batch["density"],
-            status,
-        )
+                origin_points = [
+                    points_with_id[o_id]
+                    for o_id in origin_ids
+                ]
 
-        if status == 401:
-            refreshed_auth = config.get("token")
+                destination_points = [
+                    points_with_id[d_id]
+                    for d_id in destination_ids
+                ]
 
-            if not refreshed_auth:
-                from server.providers.custom.token import fetch_token
-                refreshed_auth = await fetch_token(http_client, config)
-
-            if refreshed_auth:
-                headers = auth_headers(refreshed_auth)
+                current_headers = headers_state["headers"]
 
                 status, data, batch_parsed = await _call_matrix_batch(
                     http_client,
                     route_url,
-                    headers,
+                    current_headers,
                     origin_points,
                     destination_points,
                 )
 
-        batch_payload = []
+                logger.debug(
+                    "route_matrix: worker=%d request batch index=%d type=%s origins=%d destinations=%d "
+                    "valid=%d matrix_size=%d density=%.3f status=%s",
+                    worker_id,
+                    batch_index,
+                    batch["type"],
+                    len(origin_ids),
+                    len(destination_ids),
+                    batch["valid"],
+                    batch["matrix_size"],
+                    batch["density"],
+                    status,
+                )
 
-        for origin_id, destination_id in sorted(covered_pairs):
-            rows = pair_to_rows.get((origin_id, destination_id), [])
+                if status == 401:
+                    async with refresh_lock:
+                        refreshed_auth = config.get("token")
 
-            for row_index, origin, destination in rows:
-                result_item = batch_parsed.get((origin_id, destination_id)) if status == 200 else None
+                        if not refreshed_auth:
+                            from server.providers.custom.token import fetch_token
+                            refreshed_auth = await fetch_token(http_client, config)
 
-                if result_item:
-                    batch_payload.append(
-                        _build_result_item_success(
-                            row_index=row_index,
-                            origin=origin,
-                            destination=destination,
-                            result_item=result_item,
-                        )
+                        if refreshed_auth:
+                            headers_state["headers"] = auth_headers(refreshed_auth)
+
+                    status, data, batch_parsed = await _call_matrix_batch(
+                        http_client,
+                        route_url,
+                        headers_state["headers"],
+                        origin_points,
+                        destination_points,
                     )
-                else:
-                    batch_payload.append(
-                        _build_result_item_failure(
-                            row_index=row_index,
-                            origin=origin,
-                            destination=destination,
-                            route_url=route_url,
-                            data=data,
-                            status=status,
-                        )
+
+                batch_payload = []
+
+                for origin_id, destination_id in sorted(covered_pairs):
+                    rows = pair_to_rows.get((origin_id, destination_id), [])
+
+                    for row_index, origin, destination in rows:
+                        result_item = batch_parsed.get((origin_id, destination_id)) if status == 200 else None
+
+                        if result_item:
+                            batch_payload.append(
+                                _build_result_item_success(
+                                    row_index=row_index,
+                                    origin=origin,
+                                    destination=destination,
+                                    result_item=result_item,
+                                )
+                            )
+                        else:
+                            batch_payload.append(
+                                _build_result_item_failure(
+                                    row_index=row_index,
+                                    origin=origin,
+                                    destination=destination,
+                                    route_url=route_url,
+                                    data=data,
+                                    status=status,
+                                )
+                            )
+
+                if batch_payload:
+                    success_count = sum(1 for x in batch_payload if x.get("success"))
+
+                    logger.info(
+                        "route_matrix: worker=%d batch ready index=%d type=%s rows=%d success=%d fail=%d "
+                        "origins=%d destinations=%d valid=%d matrix_size=%d density=%.3f waste=%d",
+                        worker_id,
+                        batch_index,
+                        batch["type"],
+                        len(batch_payload),
+                        success_count,
+                        len(batch_payload) - success_count,
+                        len(origin_ids),
+                        len(destination_ids),
+                        batch["valid"],
+                        batch["matrix_size"],
+                        batch["density"],
+                        batch["waste"],
                     )
 
-        if batch_payload:
-            success_count = sum(1 for x in batch_payload if x.get("success"))
+                    async with state_lock:
+                        streamed_batches.append(batch_payload)
 
-            logger.info(
-                "route_matrix: batch ready index=%d type=%s rows=%d success=%d fail=%d "
-                "origins=%d destinations=%d valid=%d matrix_size=%d density=%.3f waste=%d",
-                batch_index,
-                batch["type"],
-                len(batch_payload),
-                success_count,
-                len(batch_payload) - success_count,
-                len(origin_ids),
-                len(destination_ids),
-                batch["valid"],
-                batch["matrix_size"],
-                batch["density"],
-                batch["waste"],
-            )
+                    if progress_callback:
+                        async with callback_lock:
+                            maybe = progress_callback(batch_payload)
+                            if hasattr(maybe, "__await__"):
+                                await maybe
 
-            streamed_batches.append(batch_payload)
+                if status != 200:
+                    async with state_lock:
+                        last_error = (status, data)
+                    continue
 
-            if progress_callback:
-                maybe = progress_callback(batch_payload)
-                if hasattr(maybe, "__await__"):
-                    await maybe
+                async with state_lock:
+                    parsed.update(batch_parsed)
+            finally:
+                batch_queue.task_done()
 
-        if status != 200:
-            last_error = (status, data)
-            continue
-
-        parsed.update(batch_parsed)
+    worker_tasks = [
+        __import__("asyncio").create_task(_run_worker(worker_id=i + 1))
+        for i in range(worker_count)
+    ]
+    await __import__("asyncio").gather(*worker_tasks)
 
     results = []
 
