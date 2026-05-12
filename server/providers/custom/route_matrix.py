@@ -956,7 +956,7 @@ async def route_matrix(http_client, auth, config, routes, progress_callback=None
         len(request_batches),
     )
 
-    worker_count = max(1, int(config.get("matrixWorkerCount", 1)))
+    worker_count = max(1, int(config.get("matrixWorkerCount", 5)))
 
     logger.info(
         "route_matrix: execute planned batches with workers=%d total_batches=%d",
