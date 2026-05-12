@@ -418,7 +418,8 @@ const applySchemePayload = (payload) => {
     .map((row) => Number(String(row.featureKey || "").replace(/\D/g, "")) || 0)
     .reduce((max, cur) => Math.max(max, cur), 0);
   featureCounter.value = Math.max(maxFeature + 1, 1);
-  syncMapLayersWithDatasets();
+  ensureValidGeometryFilter();
+  refreshSource();
 };
 
 const exportScheme = () => {
