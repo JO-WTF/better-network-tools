@@ -420,6 +420,7 @@ const applySchemePayload = (payload) => {
   featureCounter.value = Math.max(maxFeature + 1, 1);
   ensureValidGeometryFilter();
   refreshSource();
+  nextTick(() => fitMapToVisibleFeatures());
 };
 
 const exportScheme = () => {
@@ -444,6 +445,8 @@ const handleSchemeImportFile = async (event) => {
     const text = await file.text();
     const payload = JSON.parse(text);
     applySchemePayload(payload);
+    await waitForMapFlush();
+    fitMapToVisibleFeatures();
     alert("方案导入成功。");
   } catch (error) {
     console.error(error);
@@ -1363,6 +1366,37 @@ const refreshSource = () => {
   applySharedGeometryStyles();
 };
 
+const fitMapToVisibleFeatures = () => {
+  if (!mapReady.value || !map) return;
+  const visibleRows = datasets.value
+    .filter((dataset) => dataset.visible !== false)
+    .flatMap((dataset) => dataset.rows || []);
+  if (!visibleRows.length) return;
+
+  let minLng = Infinity;
+  let minLat = Infinity;
+  let maxLng = -Infinity;
+  let maxLat = -Infinity;
+
+  visibleRows.forEach((row) => {
+    const bounds = extractBounds(row?.feature?.geometry);
+    if (!bounds) return;
+    minLng = Math.min(minLng, bounds.minLng);
+    minLat = Math.min(minLat, bounds.minLat);
+    maxLng = Math.max(maxLng, bounds.maxLng);
+    maxLat = Math.max(maxLat, bounds.maxLat);
+  });
+
+  if (!Number.isFinite(minLng) || !Number.isFinite(minLat) || !Number.isFinite(maxLng) || !Number.isFinite(maxLat)) return;
+  map.fitBounds(
+    [
+      [minLng, minLat],
+      [maxLng, maxLat],
+    ],
+    { padding: 40, duration: 600, maxZoom: 15 }
+  );
+};
+
 const addDataset = () => {
   const nextId = Math.max(...datasets.value.map((dataset) => dataset.id)) + 1;
   datasets.value.push({ id: nextId, name: `数据集 ${nextId}`, rows: [], extraColumns: [], visible: true, filters: {} });
@@ -1472,6 +1506,7 @@ const processFile = async (file) => {
     if (features.length > 0) {
       appendRowsFromFeatures(features);
       await waitForMapFlush();
+      fitMapToVisibleFeatures();
     }
   } catch (error) {
     console.error("文件上传解析失败:", error);
