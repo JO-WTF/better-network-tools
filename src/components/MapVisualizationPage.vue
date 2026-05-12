@@ -461,12 +461,24 @@ const readSavedSchemes = () => {
   }
 };
 
+const createShareId = () => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+  return `scheme_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+};
+
 const saveSchemeToServer = () => {
   const schemeName = window.prompt("请输入方案名称（同名会覆盖）", "默认方案");
   if (!schemeName) return;
   const allSchemes = readSavedSchemes();
   const existing = allSchemes.find((item) => item.name === schemeName);
-  const shareId = existing?.shareId || crypto.randomUUID();
+  const shareId = existing?.shareId || createShareId();
   schemeShareId.value = shareId;
   const payload = buildSchemePayload();
   payload.name = schemeName;
