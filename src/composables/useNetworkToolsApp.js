@@ -1026,8 +1026,17 @@ const startCustomRoute = () => {
 
     if (message.type === "progress") {
       const messagePayload = message.payload || {};
-      const isBatchPayload = Array.isArray(messagePayload.results);
-      const payloads = isBatchPayload ? messagePayload.results : [messagePayload];
+      const payloadResults = messagePayload.results;
+      const isBatchPayload = Array.isArray(messagePayload) || Array.isArray(payloadResults) || (
+        payloadResults && typeof payloadResults === "object"
+      );
+      const payloads = Array.isArray(messagePayload)
+        ? messagePayload
+        : Array.isArray(payloadResults)
+          ? payloadResults
+          : payloadResults && typeof payloadResults === "object"
+            ? Object.values(payloadResults)
+            : [messagePayload];
 
       const hasEnvelopeProcessed = Number.isFinite(messagePayload.processed);
       if (hasEnvelopeProcessed) {
