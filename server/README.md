@@ -43,7 +43,7 @@ python app.py
 - **依赖安装失败**：确认 Python 版本与 `pip install -r server/requirements.txt` 的执行环境一致。
 
 
-## 5) 本地调试 custom 距离矩阵（CSV）
+## 5) 本地调试 custom 距离矩阵（CSV/Excel）
 
 直接编辑 `server/debug_route_matrix.py` 末尾 `if __name__ == "__main__":` 的本地参数，然后运行：
 
@@ -54,4 +54,5 @@ python -m server.debug_route_matrix
 说明：
 - 仍保留 `config.json` 读取设计，需在 `CONFIG_FILE` 指向的文件中提供：`appId`、`credential`、`tokenUrl`、`routeUrl`、`geocodeUrl`。
 - `OUTPUT_FILE` 为空时，自动输出为与输入同目录的 `calculated_<输入文件名>`。
+- 支持 `.csv` / `.xlsx` / `.xls` 输入与输出。
 - 输出文件会追加 `导航距离(km)`、`导航时间(min)`，失败时附带错误列。
