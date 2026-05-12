@@ -1314,7 +1314,14 @@ const appendRowsFromFeatures = (features) => {
     });
   });
 
-  activeDataset.value.rows.push(...nextRows);
+  if (nextRows.length > 5000) {
+    const chunkSize = 1000;
+    for (let i = 0; i < nextRows.length; i += chunkSize) {
+      activeDataset.value.rows.push(...nextRows.slice(i, i + chunkSize));
+    }
+  } else {
+    activeDataset.value.rows.push(...nextRows);
+  }
   activeDataset.value.extraColumns = Array.from(extraColumns);
   ensureValidGeometryFilter();
   refreshSource();
