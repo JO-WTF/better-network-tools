@@ -47,13 +47,14 @@ async def _run(*, input_file: str, output_file: str, start_col: str, end_col: st
             routes.append({"index": int(idx), "origin": origin_raw, "destination": destination_raw})
 
         raw_config = _load_config(Path(config_file))
+        data = raw_config.get("data", raw_config)
         config = {
             "provider": "custom",
-            "appId": raw_config.get("appId", ""),
-            "credential": raw_config.get("credential", ""),
-            "tokenUrl": raw_config.get("tokenUrl", ""),
-            "routeUrl": raw_config.get("routeUrl", ""),
-            "geocodeUrl": raw_config.get("geocodeUrl", ""),
+            "appId": data.get("customAppId", ""),
+            "credential": data.get("customCredential", ""),
+            "tokenUrl": data.get("customTokenUrl", ""),
+            "routeUrl": data.get("customRouteUrl", ""),
+            "geocodeUrl": data.get("customGeocodeUrl", ""),
         }
 
         result = await route_matrix_service.execute(http_client, config, routes)

@@ -29,3 +29,6 @@ python -m server.app
 ```
 
 更完整的后端启动说明见：`server/README.md`。
+
+
+本地文件调试可直接运行：`python debug_route_matrix.py`（读取 `config.json`）。
