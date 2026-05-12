@@ -1,9 +1,12 @@
+import logging
 import json
 
 from server.transport.websocket.connection_context import ConnectionContext
 from server.transport.websocket.request_parser import parse_ws_message
 from server.transport.websocket.response_builder import complete, progress
 from server.utils.coords import format_coord_pair, parse_coordinate, round_coord
+
+logger = logging.getLogger(__name__)
 
 
 class WebSocketHandler:
@@ -36,7 +39,7 @@ class WebSocketHandler:
 
             http_client = self.http_client_factory()
             try:
-                if mode == "route" and len(routes) > 100 and (str(config.get("provider", "")).lower() == "custom" or bool(config.get("tokenUrl"))):
+                if mode == "route" and (str(config.get("provider", "")).lower() == "custom" or bool(config.get("tokenUrl"))):
                     indexed_routes = []
                     invalid_items = []
                     for index, route in enumerate(routes, start=1):
@@ -96,9 +99,9 @@ class WebSocketHandler:
                                 "destination_coords": destination_coords,
                             })
 
-                    for item in invalid_items:
-                        await websocket.send(progress({
-                            "processed": item["index"],
+                    processed_count = 0
+                    if invalid_items:
+                        invalid_payloads = [{
                             "index": item["index"] - 1,
                             "success": False,
                             "errorType": item["result"].get("errorType"),
@@ -108,7 +111,35 @@ class WebSocketHandler:
                             "originLng": item["origin_coords"][1] if item["origin_coords"] else None,
                             "destinationLat": item["destination_coords"][0] if item["destination_coords"] else None,
                             "destinationLng": item["destination_coords"][1] if item["destination_coords"] else None,
+                        } for item in invalid_items]
+                        processed_count += len(invalid_payloads)
+                        await websocket.send(progress({
+                            "processed": processed_count,
+                            "results": invalid_payloads,
                         }))
+
+                    async def _emit_matrix_batch(batch_items):
+                        nonlocal processed_count
+                        batch_payloads = [{
+                            "index": item.get("index"),
+                            "success": item.get("success"),
+                            "distanceKm": item.get("distanceKm"),
+                            "durationMin": item.get("durationMin"),
+                            "errorType": item.get("errorType"),
+                            "request": item.get("request"),
+                            "response": item.get("response"),
+                            "originLat": item.get("originLat"),
+                            "originLng": item.get("originLng"),
+                            "destinationLat": item.get("destinationLat"),
+                            "destinationLng": item.get("destinationLng"),
+                        } for item in (batch_items or [])]
+                        if batch_payloads:
+                            processed_count += len(batch_payloads)
+                            logger.info("ws matrix progress: send batch size=%d processed=%d", len(batch_payloads), processed_count)
+                            await websocket.send(progress({
+                                "processed": processed_count,
+                                "results": batch_payloads,
+                            }))
 
                     matrix_result = await self.route_matrix_service.execute(
                         http_client,
@@ -118,37 +149,26 @@ class WebSocketHandler:
                             "origin": item["origin"],
                             "destination": item["destination"],
                         } for item in indexed_routes],
+                        progress_callback=_emit_matrix_batch,
                     )
 
                     if not matrix_result.get("success"):
-                        for item in indexed_routes:
+                        failure_payloads = [{
+                            "index": item["index"] - 1,
+                            "success": False,
+                            "errorType": matrix_result.get("errorType", "network_error"),
+                            "request": matrix_result.get("request", "route_matrix"),
+                            "response": matrix_result.get("response", "请求失败"),
+                            "originLat": item["origin_coords"][0] if item["origin_coords"] else None,
+                            "originLng": item["origin_coords"][1] if item["origin_coords"] else None,
+                            "destinationLat": item["destination_coords"][0] if item["destination_coords"] else None,
+                            "destinationLng": item["destination_coords"][1] if item["destination_coords"] else None,
+                        } for item in indexed_routes]
+                        if failure_payloads:
+                            processed_count += len(failure_payloads)
                             await websocket.send(progress({
-                                "processed": item["index"],
-                                "index": item["index"] - 1,
-                                "success": False,
-                                "errorType": matrix_result.get("errorType", "network_error"),
-                                "request": matrix_result.get("request", "route_matrix"),
-                                "response": matrix_result.get("response", "请求失败"),
-                                "originLat": item["origin_coords"][0] if item["origin_coords"] else None,
-                                "originLng": item["origin_coords"][1] if item["origin_coords"] else None,
-                                "destinationLat": item["destination_coords"][0] if item["destination_coords"] else None,
-                                "destinationLng": item["destination_coords"][1] if item["destination_coords"] else None,
-                            }))
-                    else:
-                        for item in matrix_result.get("results", []):
-                            await websocket.send(progress({
-                                "processed": int(item.get("index", 0)) + 1,
-                                "index": item.get("index"),
-                                "success": item.get("success"),
-                                "distanceKm": item.get("distanceKm"),
-                                "durationMin": item.get("durationMin"),
-                                "errorType": item.get("errorType"),
-                                "request": item.get("request"),
-                                "response": item.get("response"),
-                                "originLat": item.get("originLat"),
-                                "originLng": item.get("originLng"),
-                                "destinationLat": item.get("destinationLat"),
-                                "destinationLng": item.get("destinationLng"),
+                                "processed": processed_count,
+                                "results": failure_payloads,
                             }))
                 elif mode == "route":
                     for index, route in enumerate(routes, start=1):
@@ -211,17 +231,19 @@ class WebSocketHandler:
                             destination_coords = None
                         await websocket.send(progress({
                             "processed": index,
-                            "success": result.get("success"),
-                            "distanceKm": result.get("distanceKm"),
-                            "durationMin": result.get("durationMin"),
-                            "errorType": result.get("errorType"),
-                            "request": result.get("request"),
-                            "response": result.get("response"),
-                            "originLat": origin_coords[0] if origin_coords else None,
-                            "originLng": origin_coords[1] if origin_coords else None,
-                            "destinationLat": destination_coords[0] if destination_coords else None,
-                            "destinationLng": destination_coords[1] if destination_coords else None,
-                            "index": index - 1,
+                            "results": [{
+                                "success": result.get("success"),
+                                "distanceKm": result.get("distanceKm"),
+                                "durationMin": result.get("durationMin"),
+                                "errorType": result.get("errorType"),
+                                "request": result.get("request"),
+                                "response": result.get("response"),
+                                "originLat": origin_coords[0] if origin_coords else None,
+                                "originLng": origin_coords[1] if origin_coords else None,
+                                "destinationLat": destination_coords[0] if destination_coords else None,
+                                "destinationLng": destination_coords[1] if destination_coords else None,
+                                "index": index - 1,
+                            }],
                         }))
                 else:
                     for index, address in enumerate(addresses, start=1):

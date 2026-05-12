@@ -186,6 +186,7 @@ const geocodeCache = new Map();
 const reverseCache = new Map();
 const routeCache = new Map();
 const PERSISTENT_CACHE_BATCH = 100;
+const PERSISTENT_ROUTE_MAX_ITEMS = 2000;
 const REALTIME_REFRESH_INTERVAL_MS = 250;
 const persistentCacheBuckets = {
   geocode: new Map(),
@@ -226,16 +227,37 @@ const getPersistentBucket = (type, scope) => {
     map = new Map();
   }
 
-  const bucket = { storageKey, map, pending: 0 };
+  const bucket = { type, storageKey, map, pending: 0, disabled: false };
   scopedBuckets.set(scope, bucket);
   return bucket;
 };
 
 const flushPersistentBucket = (bucket) => {
-  if (!bucket || bucket.pending <= 0) return;
+  if (!bucket || bucket.pending <= 0 || bucket.disabled) return;
   const serialized = Object.fromEntries(bucket.map.entries());
-  localStorage.setItem(bucket.storageKey, JSON.stringify(serialized));
-  bucket.pending = 0;
+  try {
+    localStorage.setItem(bucket.storageKey, JSON.stringify(serialized));
+    bucket.pending = 0;
+  } catch (error) {
+    const isQuota = String(error).includes("QuotaExceededError");
+    if (!isQuota) {
+      throw error;
+    }
+    // 路径缓存可能非常大：降级为仅保留最近 N 条，仍失败则禁用该 bucket 持久化。
+    if (bucket.type === "route") {
+      const entries = Array.from(bucket.map.entries());
+      bucket.map = new Map(entries.slice(-Math.floor(PERSISTENT_ROUTE_MAX_ITEMS / 2)));
+      try {
+        localStorage.setItem(bucket.storageKey, JSON.stringify(Object.fromEntries(bucket.map.entries())));
+        bucket.pending = 0;
+        return;
+      } catch (_retryError) {
+        bucket.disabled = true;
+      }
+    } else {
+      bucket.disabled = true;
+    }
+  }
 };
 
 const flushAllPersistentCaches = () => {
@@ -259,6 +281,13 @@ const setPersistentCacheValue = (type, requestKey, value) => {
   const bucket = getPersistentBucket(type, scope);
   if (!bucket) return;
   bucket.map.set(requestKey, value);
+  if (type === "route" && bucket.map.size > PERSISTENT_ROUTE_MAX_ITEMS) {
+    let overflow = bucket.map.size - PERSISTENT_ROUTE_MAX_ITEMS;
+    for (const key of bucket.map.keys()) {
+      bucket.map.delete(key);
+      if (--overflow <= 0) break;
+    }
+  }
   bucket.pending += 1;
   if (bucket.pending >= PERSISTENT_CACHE_BATCH) {
     flushPersistentBucket(bucket);
@@ -1026,11 +1055,20 @@ const startCustomRoute = () => {
 
     if (message.type === "progress") {
       const messagePayload = message.payload || {};
-      const payloads = Array.isArray(messagePayload.results)
-        ? messagePayload.results
-        : [messagePayload];
+      const payloadResults = messagePayload.results;
+      const isBatchPayload = Array.isArray(messagePayload) || Array.isArray(payloadResults) || (
+        payloadResults && typeof payloadResults === "object"
+      );
+      const payloads = Array.isArray(messagePayload)
+        ? messagePayload
+        : Array.isArray(payloadResults)
+          ? payloadResults
+          : payloadResults && typeof payloadResults === "object"
+            ? Object.values(payloadResults)
+            : [messagePayload];
 
-      if (Number.isFinite(messagePayload.processed)) {
+      const hasEnvelopeProcessed = Number.isFinite(messagePayload.processed);
+      if (hasEnvelopeProcessed) {
         geocodeState.processed = messagePayload.processed;
       }
 
@@ -1043,7 +1081,7 @@ const startCustomRoute = () => {
 
       if (Number.isFinite(payload.processed)) {
         geocodeState.processed = payload.processed;
-      } else {
+      } else if (!isBatchPayload && !hasEnvelopeProcessed) {
         geocodeState.processed += 1;
       }
 

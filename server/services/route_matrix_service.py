@@ -4,7 +4,7 @@ class RouteMatrixService:
         self.auth_service = auth_service
         self.cache_manager = cache_manager
 
-    async def execute(self, http_client, config, routes):
+    async def execute(self, http_client, config, routes, progress_callback=None):
         provider_name = self.provider_registry.detect_provider(config)
         provider = self.provider_registry.get(provider_name)
         auth = await self.auth_service.get_auth(provider, http_client, config)
@@ -15,4 +15,6 @@ class RouteMatrixService:
                 "request": config.get("tokenUrl", "token"),
                 "response": "无法获取 Token",
             }
+        if provider_name == "custom":
+            return await provider.route_matrix(http_client, auth, config, routes, progress_callback=progress_callback)
         return await provider.route_matrix(http_client, auth, config, routes)
