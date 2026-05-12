@@ -10,24 +10,24 @@ from server.infrastructure.http.client import HttpClient
 from server.services.auth_service import AuthService
 from server.services.provider_registry import ProviderRegistry
 from server.services.route_matrix_service import RouteMatrixService
-from server.utils.coords import format_coord_pair
 
 
 def _parse_args():
     parser = argparse.ArgumentParser(description="本地调试 custom route matrix（CSV 文件）")
     parser.add_argument("--input", required=True, help="输入 CSV 文件路径")
-    parser.add_argument("--output", required=True, help="输出 CSV 文件路径")
+    parser.add_argument("--output", default="", help="输出 CSV 文件路径，可为空")
     parser.add_argument("--start-col", required=True, help="起点列名")
     parser.add_argument("--end-col", required=True, help="终点列名")
-    parser.add_argument("--token-url", required=True)
-    parser.add_argument("--route-url", required=True)
-    parser.add_argument("--app-id", required=True)
-    parser.add_argument("--credential", required=True)
-    parser.add_argument("--geocode-url", default="", help="地址模式下可选")
+    parser.add_argument("--config-file", default="config.json", help="前端配置文件（默认 config.json）")
     parser.add_argument("--input-mode", choices=["coordinate", "address"], default="coordinate")
     return parser.parse_args()
 
 
+
+
+def _load_config(config_file: Path):
+    with config_file.open("r", encoding="utf-8") as f:
+        return json.load(f)
 def _load_rows(input_path: Path):
     with input_path.open("r", encoding="utf-8-sig", newline="") as f:
         return list(csv.DictReader(f))
@@ -57,13 +57,14 @@ async def _run(args):
                 destination = destination_raw
             routes.append({"index": idx, "origin": origin, "destination": destination})
 
+        raw_config = _load_config(Path(args.config_file))
         config = {
             "provider": "custom",
-            "appId": args.app_id,
-            "credential": args.credential,
-            "tokenUrl": args.token_url,
-            "routeUrl": args.route_url,
-            "geocodeUrl": args.geocode_url,
+            "appId": raw_config.get("appId", ""),
+            "credential": raw_config.get("credential", ""),
+            "tokenUrl": raw_config.get("tokenUrl", ""),
+            "routeUrl": raw_config.get("routeUrl", ""),
+            "geocodeUrl": raw_config.get("geocodeUrl", ""),
         }
 
         result = await route_matrix_service.execute(http_client, config, routes)
@@ -80,7 +81,7 @@ async def _run(args):
                 row["错误类型"] = item.get("errorType", "") if item else "no_result"
                 row["错误详情"] = item.get("response", "") if item else "无结果"
 
-        output_path = Path(args.output)
+        output_path = Path(args.output) if args.output else Path(args.input).with_name(f"calculated_{Path(args.input).name}")
         output_path.parent.mkdir(parents=True, exist_ok=True)
         fieldnames = list(rows[0].keys()) if rows else [args.start_col, args.end_col, "导航距离(km)", "导航时间(min)"]
         with output_path.open("w", encoding="utf-8-sig", newline="") as f:

@@ -48,9 +48,16 @@ python app.py
 可直接用 custom 接口计算某个 CSV 文件中的起终点路线：
 
 ```bash
-python -m server.debug_route_matrix   --input ./data/routes.csv   --output ./data/routes_with_result.csv   --start-col 起点   --end-col 终点   --input-mode coordinate   --app-id <your_app_id>   --credential <your_credential>   --token-url <your_token_url>   --route-url <your_route_url>
+python -m server.debug_route_matrix \
+  --input ./data/routes.csv \
+  --start-col 起点 \
+  --end-col 终点 \
+  --input-mode coordinate \
+  --config-file ./config.json
 ```
 
 说明：
+- `--config-file` 默认读取当前目录 `config.json`，包含 `appId`、`credential`、`tokenUrl`、`routeUrl`、`geocodeUrl`。
 - `--input-mode coordinate` 时，起终点列为坐标字符串（兼容 `lng,lat` / `lat,lng`）。
+- `--output` 为空时，自动输出为与输入同目录的 `calculated_<输入文件名>`。
 - 输出文件会追加 `导航距离(km)`、`导航时间(min)`，失败时附带错误列。
