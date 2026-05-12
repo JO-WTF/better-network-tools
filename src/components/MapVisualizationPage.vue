@@ -940,6 +940,13 @@ const ensureMap = () => {
       },
     });
     map.addLayer({
+      id: "viz-fill",
+      type: "fill",
+      source: "viz-source",
+      filter: ["==", ["geometry-type"], "Polygon"],
+      paint: { "fill-color": "#2563eb", "fill-opacity": 0.15 },
+    });
+    map.addLayer({
       id: "viz-polygon-outline",
       type: "line",
       source: "viz-source",
