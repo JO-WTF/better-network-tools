@@ -24,13 +24,9 @@ def _normalize_coord(value: str):
     except ValueError:
         return None
 
-    # 优先按 lat,lng 解析（与 server 内部坐标字符串保持一致）
+    # 仅按输入顺序解析为 lat,lng，不做经纬度互换
     if -90 <= first <= 90 and -180 <= second <= 180:
         return first, second
-
-    # 兼容历史 lng,lat 输入
-    if -180 <= first <= 180 and -90 <= second <= 90:
-        return second, first
 
     return None
 
