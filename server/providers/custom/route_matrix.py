@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 # 基础坐标工具
 # =========================
 
-def _normalize_coord(value: str, prefer_latlng: bool = True):
+def _normalize_coord(value: str):
     raw = str(value or "").strip()
     if not raw:
         return None
@@ -32,20 +32,9 @@ def _normalize_coord(value: str, prefer_latlng: bool = True):
     except ValueError:
         return None
 
-    # 支持 lat,lng 与 lng,lat，两种顺序由 prefer_latlng 决定优先级。
-    latlng_ok = -90 <= first <= 90 and -180 <= second <= 180
-    lnglat_ok = -180 <= first <= 180 and -90 <= second <= 90
-
-    if prefer_latlng:
-        if latlng_ok:
-            return first, second
-        if lnglat_ok:
-            return second, first
-    else:
-        if lnglat_ok:
-            return second, first
-        if latlng_ok:
-            return first, second
+    # 仅支持 lat,lng 输入
+    if -90 <= first <= 90 and -180 <= second <= 180:
+        return first, second
 
     return None
 
@@ -123,8 +112,8 @@ def _parse_matrix_response(data, origins, destinations):
         # 有些服务返回的坐标格式可能不是完全一致的小数字符串，
         # 所以再做一次 normalize。
         if origin_id is None or destination_id is None:
-            normalized_origin = _normalize_coord(origin, prefer_latlng=True)
-            normalized_destination = _normalize_coord(destination, prefer_latlng=True)
+            normalized_origin = _normalize_coord(origin)
+            normalized_destination = _normalize_coord(destination)
 
             if normalized_origin:
                 origin_id = ori_lookup.get(
@@ -882,15 +871,13 @@ async def route_matrix(http_client, auth, config, routes, progress_callback=None
     enable_signature_merge = bool(config.get("matrixEnableSignatureMerge", True))
     max_signature_merge_groups = int(config.get("matrixMaxSignatureMergeGroups", 2))
 
-    matrix_input_coord_order = str(config.get("matrixInputCoordOrder", "latlng")).strip().lower()
-    prefer_latlng_input = matrix_input_coord_order != "lnglat"
 
     point_lookup = {}
     route_pairs = []
 
     for item in routes:
-        origin = _normalize_coord(item.get("origin"), prefer_latlng=prefer_latlng_input)
-        destination = _normalize_coord(item.get("destination"), prefer_latlng=prefer_latlng_input)
+        origin = _normalize_coord(item.get("origin"))
+        destination = _normalize_coord(item.get("destination"))
 
         if not origin or not destination:
             continue

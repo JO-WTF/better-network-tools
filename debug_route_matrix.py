@@ -16,6 +16,33 @@ def _load_config(config_file: Path):
         return json.load(f)
 
 
+
+
+def _normalize_lonlat_to_latlng(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+
+    delimiter = "," if "," in raw else "，" if "，" in raw else None
+    if not delimiter:
+        return raw
+
+    parts = [item.strip() for item in raw.split(delimiter)]
+    if len(parts) < 2:
+        return raw
+
+    try:
+        lng = float(parts[0])
+        lat = float(parts[1])
+    except ValueError:
+        return raw
+
+    if -180 <= lng <= 180 and -90 <= lat <= 90:
+        return f"{lat:.6f},{lng:.6f}"
+
+    return raw
+
+
 def _load_rows(input_path: Path):
     suffix = input_path.suffix.lower()
     if suffix == ".csv":
@@ -40,8 +67,8 @@ async def _run(*, input_file: str, output_file: str, start_col: str, end_col: st
             raise ValueError(f"不支持的 input_mode: {input_mode}")
 
         for idx, row in df.iterrows():
-            origin_raw = str(row.get(start_col, "")).strip()
-            destination_raw = str(row.get(end_col, "")).strip()
+            origin_raw = _normalize_lonlat_to_latlng(row.get(start_col, ""))
+            destination_raw = _normalize_lonlat_to_latlng(row.get(end_col, ""))
             if not origin_raw or not destination_raw:
                 continue
             routes.append({"index": int(idx), "origin": origin_raw, "destination": destination_raw})
