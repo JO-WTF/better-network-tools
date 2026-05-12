@@ -44,6 +44,27 @@
           <span class="draw-label">面</span>
         </button>
       </div>
+      <div class="scheme-fab-group">
+        <button class="draw-fab icon-only" type="button" title="导出方案" @click="exportScheme">
+          <Download :size="18" :stroke-width="2.5" />
+          <span class="draw-label">导出方案</span>
+        </button>
+        <button class="draw-fab icon-only" type="button" title="导入方案" @click="triggerSchemeImport">
+          <Upload :size="18" :stroke-width="2.5" />
+          <span class="draw-label">导入方案</span>
+        </button>
+        <button class="draw-fab icon-only" type="button" title="保存并生成分享链接" @click="saveSchemeToServer">
+          <Save :size="18" :stroke-width="2.5" />
+          <span class="draw-label">保存方案</span>
+        </button>
+        <input
+          ref="schemeFileInput"
+          class="visually-hidden"
+          type="file"
+          accept=".json"
+          @change="handleSchemeImportFile"
+        />
+      </div>
     </div>
 
     <div class="visual-bottom">
@@ -296,7 +317,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import mapboxgl from "mapbox-gl";
 import * as XLSX from "xlsx";
-import { Eye, EyeOff, Settings, MapPin, Minus, Square, X, Plus, Filter, FilterX, Search } from "lucide-vue-next";
+import { Eye, EyeOff, Settings, MapPin, Minus, Square, X, Plus, Search, Download, Upload, Save } from "lucide-vue-next";
 
 const props = defineProps({
   mapApiKey: { type: String, default: "" },
@@ -315,6 +336,7 @@ const showPaste = ref(false);
 const pasteInput = ref("");
 const isProcessing = ref(false);
 const dataFileInput = ref(null);
+const schemeFileInput = ref(null);
 const isDragging = ref(false);
 const dropzoneFlash = ref(false);
 
@@ -342,8 +364,120 @@ const drawingCoords = ref([]);
 let mapPopup = null;
 const pointLayerPrefix = "viz-dataset-point-layer-";
 const pointSourcePrefix = "viz-dataset-point-source-";
+const schemeShareId = ref("");
+const schemeStorageKey = "network_tools_saved_schemes";
 
 const activeDataset = computed(() => datasets.value.find((d) => d.id === activeDatasetId.value));
+
+const buildSchemePayload = () => ({
+  version: 1,
+  name: `方案_${new Date().toISOString()}`,
+  createdAt: new Date().toISOString(),
+  shareId: schemeShareId.value || "",
+  activeDatasetId: activeDatasetId.value,
+  datasets: datasets.value.map((dataset) => ({
+    id: dataset.id,
+    name: dataset.name,
+    visible: dataset.visible !== false,
+    extraColumns: [...(dataset.extraColumns || [])],
+    filters: { ...(dataset.filters || {}) },
+    rows: dataset.rows.map((row) => ({
+      gid: row.gid,
+      featureKey: row.featureKey,
+      geometryType: row.geometryType,
+      properties: { ...(row.properties || {}) },
+      feature: row.feature ? JSON.parse(JSON.stringify(row.feature)) : null,
+    })),
+  })),
+  datasetStyles: JSON.parse(JSON.stringify(datasetStyles.value)),
+});
+
+const applySchemePayload = (payload) => {
+  if (!payload || !Array.isArray(payload.datasets) || !payload.datasets.length) {
+    throw new Error("方案数据无效");
+  }
+  const importedDatasets = payload.datasets.map((dataset, index) => ({
+    id: Number(dataset.id ?? index + 1),
+    name: dataset.name || `数据集 ${index + 1}`,
+    rows: (dataset.rows || []).map((row, rowIndex) => ({
+      gid: Number(row.gid ?? rowIndex + 1),
+      featureKey: row.featureKey || `feature_${Date.now()}_${index}_${rowIndex}`,
+      geometryType: row.geometryType || row.feature?.geometry?.type || "",
+      properties: { ...(row.properties || {}) },
+      feature: row.feature ? JSON.parse(JSON.stringify(row.feature)) : null,
+    })),
+    extraColumns: [...(dataset.extraColumns || [])],
+    visible: dataset.visible !== false,
+    filters: { ...(dataset.filters || {}) },
+  }));
+  datasets.value = importedDatasets;
+  activeDatasetId.value = Number(payload.activeDatasetId ?? importedDatasets[0].id);
+  datasetStyles.value = payload.datasetStyles || {};
+  const maxFeature = importedDatasets
+    .flatMap((dataset) => dataset.rows)
+    .map((row) => Number(String(row.featureKey || "").replace(/\D/g, "")) || 0)
+    .reduce((max, cur) => Math.max(max, cur), 0);
+  featureCounter.value = Math.max(maxFeature + 1, 1);
+  syncMapLayersWithDatasets();
+};
+
+const exportScheme = () => {
+  const payload = buildSchemePayload();
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${payload.name}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+const triggerSchemeImport = () => {
+  schemeFileInput.value?.click();
+};
+
+const handleSchemeImportFile = async (event) => {
+  const [file] = event.target?.files || [];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const payload = JSON.parse(text);
+    applySchemePayload(payload);
+    alert("方案导入成功。");
+  } catch (error) {
+    console.error(error);
+    alert("方案导入失败，请检查 JSON 文件格式。");
+  } finally {
+    event.target.value = "";
+  }
+};
+
+const readSavedSchemes = () => {
+  try {
+    return JSON.parse(localStorage.getItem(schemeStorageKey) || "[]");
+  } catch {
+    return [];
+  }
+};
+
+const saveSchemeToServer = () => {
+  const schemeName = window.prompt("请输入方案名称（同名会覆盖）", "默认方案");
+  if (!schemeName) return;
+  const allSchemes = readSavedSchemes();
+  const existing = allSchemes.find((item) => item.name === schemeName);
+  const shareId = existing?.shareId || crypto.randomUUID();
+  schemeShareId.value = shareId;
+  const payload = buildSchemePayload();
+  payload.name = schemeName;
+  payload.shareId = shareId;
+  payload.updatedAt = new Date().toISOString();
+  const nextSchemes = allSchemes.filter((item) => item.name !== schemeName);
+  nextSchemes.push(payload);
+  localStorage.setItem(schemeStorageKey, JSON.stringify(nextSchemes));
+  const shareUrl = `${window.location.origin}${window.location.pathname}?scheme=${encodeURIComponent(shareId)}`;
+  window.history.replaceState({}, "", `${window.location.pathname}?scheme=${encodeURIComponent(shareId)}`);
+  window.prompt("分享链接（已保存，可复制）", shareUrl);
+};
 
 
 
@@ -1457,6 +1591,19 @@ const removeFeature = (featureKey) => {
 };
 
 onMounted(() => {
+  const params = new URLSearchParams(window.location.search);
+  const schemeId = params.get("scheme");
+  if (schemeId) {
+    const target = readSavedSchemes().find((item) => item.shareId === schemeId);
+    if (target) {
+      try {
+        applySchemePayload(target);
+        schemeShareId.value = schemeId;
+      } catch (error) {
+        console.error(error);
+      }
+    }
+  }
   ensureMap();
 });
 
