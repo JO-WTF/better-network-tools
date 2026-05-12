@@ -6,15 +6,12 @@ from pathlib import Path
 class Settings:
     host: str = "0.0.0.0"
     port: int = 8765
-    http_port: int = 8766
     request_timeout_s: int = 30
     max_connections: int = 100
     cache_dir: Path = Path(__file__).resolve().parents[2] / "cache"
-    scheme_dir: Path = Path(__file__).resolve().parents[2] / "data" / "schemes"
 
 
 def get_settings() -> Settings:
     settings = Settings()
     settings.cache_dir.mkdir(parents=True, exist_ok=True)
-    settings.scheme_dir.mkdir(parents=True, exist_ok=True)
     return settings

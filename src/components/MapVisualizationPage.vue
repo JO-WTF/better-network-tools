@@ -53,10 +53,6 @@
           <Upload :size="18" :stroke-width="2.5" />
           <span class="draw-label">导入方案</span>
         </button>
-        <button class="draw-fab icon-only" type="button" title="保存并生成分享链接" @click="saveSchemeToServer">
-          <Save :size="18" :stroke-width="2.5" />
-          <span class="draw-label">保存方案</span>
-        </button>
         <input
           ref="schemeFileInput"
           class="visually-hidden"
@@ -317,7 +313,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import mapboxgl from "mapbox-gl";
 import * as XLSX from "xlsx";
-import { Eye, EyeOff, Settings, MapPin, Minus, Square, X, Plus, Search, Download, Upload, Save } from "lucide-vue-next";
+import { Eye, EyeOff, Settings, MapPin, Minus, Square, X, Plus, Search, Download, Upload } from "lucide-vue-next";
 
 const props = defineProps({
   mapApiKey: { type: String, default: "" },
@@ -365,7 +361,6 @@ let mapPopup = null;
 const pointLayerPrefix = "viz-dataset-point-layer-";
 const pointSourcePrefix = "viz-dataset-point-source-";
 const schemeShareId = ref("");
-const schemeStorageKey = "network_tools_saved_schemes";
 
 const activeDataset = computed(() => datasets.value.find((d) => d.id === activeDatasetId.value));
 
@@ -455,68 +450,6 @@ const handleSchemeImportFile = async (event) => {
     event.target.value = "";
   }
 };
-
-const readSavedSchemes = () => {
-  try {
-    return JSON.parse(localStorage.getItem(schemeStorageKey) || "[]");
-  } catch {
-    return [];
-  }
-};
-
-const fetchSchemeFromServer = async (shareId) => {
-  const resp = await fetch(`http://${window.location.hostname}:8766/api/schemes/${encodeURIComponent(shareId)}`);
-  if (!resp.ok) throw new Error("方案读取失败");
-  return resp.json();
-};
-
-const saveSchemeToServerFile = async (shareId, payload) => {
-  const resp = await fetch(`http://${window.location.hostname}:8766/api/schemes/${encodeURIComponent(shareId)}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!resp.ok) throw new Error("方案保存失败");
-};
-
-const createShareId = () => {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-  const size = 8;
-  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
-    const bytes = new Uint8Array(size);
-    crypto.getRandomValues(bytes);
-    return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
-  }
-  return Array.from({ length: size }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
-};
-
-const saveSchemeToServer = async () => {
-  const schemeName = window.prompt("请输入方案名称（同名会覆盖）", "默认方案");
-  if (!schemeName) return;
-  const allSchemes = readSavedSchemes();
-  const existing = allSchemes.find((item) => item.name === schemeName);
-  const shareId = existing?.shareId || createShareId();
-  schemeShareId.value = shareId;
-  const payload = buildSchemePayload();
-  payload.name = schemeName;
-  payload.shareId = shareId;
-  payload.updatedAt = new Date().toISOString();
-  const nextSchemes = allSchemes.filter((item) => item.name !== schemeName);
-  nextSchemes.push(payload);
-  localStorage.setItem(schemeStorageKey, JSON.stringify(nextSchemes));
-  try {
-    await saveSchemeToServerFile(shareId, payload);
-  } catch (error) {
-    console.error(error);
-    alert("方案保存到服务端失败，请确认后端已启动。");
-    return;
-  }
-  const shareUrl = `${window.location.origin}${window.location.pathname}?scheme=${encodeURIComponent(shareId)}`;
-  window.history.replaceState({}, "", `${window.location.pathname}?scheme=${encodeURIComponent(shareId)}`);
-  window.prompt("分享链接（已保存，可复制）", shareUrl);
-};
-
-
 
 const geometryGroupMap = {
   Point: "point",
@@ -1681,18 +1614,6 @@ const removeFeature = (featureKey) => {
 };
 
 onMounted(() => {
-  const params = new URLSearchParams(window.location.search);
-  const schemeId = params.get("scheme");
-  if (schemeId) {
-    fetchSchemeFromServer(schemeId)
-      .then((target) => {
-        applySchemePayload(target);
-        schemeShareId.value = schemeId;
-      })
-      .catch((error) => {
-        console.error(error);
-      });
-  }
   ensureMap();
 });
 
