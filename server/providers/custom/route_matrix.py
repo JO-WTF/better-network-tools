@@ -24,7 +24,8 @@ def _normalize_coord(value: str):
     except ValueError:
         return None
 
-    return first, second
+    # 输入是 lon,lat；内部统一返回 lat,lng
+    return second, first
 
 
 def _fmt_latlng(lat: float, lng: float) -> str:
