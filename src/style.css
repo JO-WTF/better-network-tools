@@ -1213,6 +1213,42 @@ button:not(:disabled):hover {
   color: #fff;
 }
 
+.scheme-fab-group {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.draw-fab.icon-only {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  position: relative;
+}
+
+.draw-fab.icon-only .draw-label {
+  position: absolute;
+  right: 50px;
+  white-space: nowrap;
+  background: rgba(15, 23, 42, 0.9);
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 6px;
+  opacity: 0;
+  transform: translateY(2px);
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.draw-fab.icon-only:hover .draw-label {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 
 .dataset-tabs .mode-button {
   border: 1px solid #e8edf7;

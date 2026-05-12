@@ -44,6 +44,23 @@
           <span class="draw-label">面</span>
         </button>
       </div>
+      <div class="scheme-fab-group">
+        <button class="draw-fab icon-only" type="button" title="导出方案" @click="exportScheme">
+          <Download :size="18" :stroke-width="2.5" />
+          <span class="draw-label">导出方案</span>
+        </button>
+        <button class="draw-fab icon-only" type="button" title="导入方案" @click="triggerSchemeImport">
+          <Upload :size="18" :stroke-width="2.5" />
+          <span class="draw-label">导入方案</span>
+        </button>
+        <input
+          ref="schemeFileInput"
+          class="visually-hidden"
+          type="file"
+          accept=".json"
+          @change="handleSchemeImportFile"
+        />
+      </div>
     </div>
 
     <div class="visual-bottom">
@@ -296,7 +313,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import mapboxgl from "mapbox-gl";
 import * as XLSX from "xlsx";
-import { Eye, EyeOff, Settings, MapPin, Minus, Square, X, Plus, Filter, FilterX, Search } from "lucide-vue-next";
+import { Eye, EyeOff, Settings, MapPin, Minus, Square, X, Plus, Search, Download, Upload } from "lucide-vue-next";
 
 const props = defineProps({
   mapApiKey: { type: String, default: "" },
@@ -315,6 +332,7 @@ const showPaste = ref(false);
 const pasteInput = ref("");
 const isProcessing = ref(false);
 const dataFileInput = ref(null);
+const schemeFileInput = ref(null);
 const isDragging = ref(false);
 const dropzoneFlash = ref(false);
 
@@ -342,10 +360,96 @@ const drawingCoords = ref([]);
 let mapPopup = null;
 const pointLayerPrefix = "viz-dataset-point-layer-";
 const pointSourcePrefix = "viz-dataset-point-source-";
+const schemeShareId = ref("");
 
 const activeDataset = computed(() => datasets.value.find((d) => d.id === activeDatasetId.value));
 
+const buildSchemePayload = () => ({
+  version: 1,
+  name: `方案_${new Date().toISOString()}`,
+  createdAt: new Date().toISOString(),
+  shareId: schemeShareId.value || "",
+  activeDatasetId: activeDatasetId.value,
+  datasets: datasets.value.map((dataset) => ({
+    id: dataset.id,
+    name: dataset.name,
+    visible: dataset.visible !== false,
+    extraColumns: [...(dataset.extraColumns || [])],
+    filters: { ...(dataset.filters || {}) },
+    rows: dataset.rows.map((row) => ({
+      gid: row.gid,
+      featureKey: row.featureKey,
+      geometryType: row.geometryType,
+      properties: { ...(row.properties || {}) },
+      feature: row.feature ? JSON.parse(JSON.stringify(row.feature)) : null,
+    })),
+  })),
+  datasetStyles: JSON.parse(JSON.stringify(datasetStyles.value)),
+});
 
+const applySchemePayload = (payload) => {
+  if (!payload || !Array.isArray(payload.datasets) || !payload.datasets.length) {
+    throw new Error("方案数据无效");
+  }
+  const importedDatasets = payload.datasets.map((dataset, index) => ({
+    id: Number(dataset.id ?? index + 1),
+    name: dataset.name || `数据集 ${index + 1}`,
+    rows: (dataset.rows || []).map((row, rowIndex) => ({
+      gid: Number(row.gid ?? rowIndex + 1),
+      featureKey: row.featureKey || `feature_${Date.now()}_${index}_${rowIndex}`,
+      geometryType: row.geometryType || row.feature?.geometry?.type || "",
+      properties: { ...(row.properties || {}) },
+      feature: row.feature ? JSON.parse(JSON.stringify(row.feature)) : null,
+    })),
+    extraColumns: [...(dataset.extraColumns || [])],
+    visible: dataset.visible !== false,
+    filters: { ...(dataset.filters || {}) },
+  }));
+  datasets.value = importedDatasets;
+  activeDatasetId.value = Number(payload.activeDatasetId ?? importedDatasets[0].id);
+  datasetStyles.value = payload.datasetStyles || {};
+  const maxFeature = importedDatasets
+    .flatMap((dataset) => dataset.rows)
+    .map((row) => Number(String(row.featureKey || "").replace(/\D/g, "")) || 0)
+    .reduce((max, cur) => Math.max(max, cur), 0);
+  featureCounter.value = Math.max(maxFeature + 1, 1);
+  ensureValidGeometryFilter();
+  refreshSource();
+  nextTick(() => fitMapToVisibleFeatures());
+};
+
+const exportScheme = () => {
+  const payload = buildSchemePayload();
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${payload.name}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+const triggerSchemeImport = () => {
+  schemeFileInput.value?.click();
+};
+
+const handleSchemeImportFile = async (event) => {
+  const [file] = event.target?.files || [];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const payload = JSON.parse(text);
+    applySchemePayload(payload);
+    await waitForMapFlush();
+    fitMapToVisibleFeatures();
+    alert("方案导入成功。");
+  } catch (error) {
+    console.error(error);
+    alert("方案导入失败，请检查 JSON 文件格式。");
+  } finally {
+    event.target.value = "";
+  }
+};
 
 const geometryGroupMap = {
   Point: "point",
@@ -1140,7 +1244,7 @@ const appendRowsFromFeatures = (features) => {
   if (!activeDataset.value) return;
   const start = activeDataset.value.rows.length + 1;
 
-  const nextRows = features.map((feature, index) => {
+  let nextRows = features.map((feature, index) => {
     const gid = start + index;
     const featureKey = `d${activeDataset.value.id}-f${featureCounter.value}`;
     featureCounter.value += 1;
@@ -1180,10 +1284,20 @@ const appendRowsFromFeatures = (features) => {
     });
   });
 
-  activeDataset.value.rows.push(...nextRows);
+  if (nextRows.length > 5000) {
+    const chunkSize = 1000;
+    for (let i = 0; i < nextRows.length; i += chunkSize) {
+      activeDataset.value.rows.push(...nextRows.slice(i, i + chunkSize));
+    }
+  } else {
+    activeDataset.value.rows.push(...nextRows);
+  }
   activeDataset.value.extraColumns = Array.from(extraColumns);
   ensureValidGeometryFilter();
   refreshSource();
+
+  // Release large temporary array as early as possible.
+  nextRows = [];
 };
 
 const refreshSource = () => {
@@ -1204,6 +1318,37 @@ const refreshSource = () => {
     map.getSource(sourceId)?.setData({ type: "FeatureCollection", features: pointFeatures });
   });
   applySharedGeometryStyles();
+};
+
+const fitMapToVisibleFeatures = () => {
+  if (!mapReady.value || !map) return;
+  const visibleRows = datasets.value
+    .filter((dataset) => dataset.visible !== false)
+    .flatMap((dataset) => dataset.rows || []);
+  if (!visibleRows.length) return;
+
+  let minLng = Infinity;
+  let minLat = Infinity;
+  let maxLng = -Infinity;
+  let maxLat = -Infinity;
+
+  visibleRows.forEach((row) => {
+    const bounds = extractBounds(row?.feature?.geometry);
+    if (!bounds) return;
+    minLng = Math.min(minLng, bounds.minLng);
+    minLat = Math.min(minLat, bounds.minLat);
+    maxLng = Math.max(maxLng, bounds.maxLng);
+    maxLat = Math.max(maxLat, bounds.maxLat);
+  });
+
+  if (!Number.isFinite(minLng) || !Number.isFinite(minLat) || !Number.isFinite(maxLng) || !Number.isFinite(maxLat)) return;
+  map.fitBounds(
+    [
+      [minLng, minLat],
+      [maxLng, maxLat],
+    ],
+    { padding: 40, duration: 600, maxZoom: 15 }
+  );
 };
 
 const addDataset = () => {
@@ -1287,15 +1432,19 @@ const processFile = async (file) => {
   if (!file) return;
 
   isProcessing.value = true;
+  let features = [];
+  let data = null;
+  let workbook = null;
+  let rows = null;
+  let text = "";
   try {
     const extension = file.name.split(".").pop()?.toLowerCase();
-    let features = [];
 
     if (extension === "xlsx" || extension === "xls") {
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(new Uint8Array(data), { type: "array" });
+      data = await file.arrayBuffer();
+      workbook = XLSX.read(new Uint8Array(data), { type: "array" });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet);
+      rows = XLSX.utils.sheet_to_json(sheet);
       features = rows
         .map((row) => {
           const geometry = detectGeometryFromRow(row);
@@ -1304,18 +1453,26 @@ const processFile = async (file) => {
         })
         .filter(Boolean);
     } else {
-      const text = await file.text();
+      text = await file.text();
       features = parseContentToFeatures(text);
     }
 
     if (features.length > 0) {
       appendRowsFromFeatures(features);
       await waitForMapFlush();
+      fitMapToVisibleFeatures();
     }
   } catch (error) {
     console.error("文件上传解析失败:", error);
     alert("文件解析失败，请检查文件格式是否正确。");
   } finally {
+    if (Array.isArray(features)) features.length = 0;
+    if (Array.isArray(rows)) rows.length = 0;
+    data = null;
+    workbook = null;
+    rows = null;
+    text = "";
+    features = [];
     isProcessing.value = false;
   }
 };
