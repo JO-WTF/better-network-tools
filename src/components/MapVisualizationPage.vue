@@ -480,15 +480,14 @@ const saveSchemeToServerFile = async (shareId, payload) => {
 };
 
 const createShareId = () => {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+  const size = 8;
   if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
-    const bytes = new Uint8Array(16);
+    const bytes = new Uint8Array(size);
     crypto.getRandomValues(bytes);
-    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
   }
-  return `scheme_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+  return Array.from({ length: size }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
 };
 
 const saveSchemeToServer = async () => {
