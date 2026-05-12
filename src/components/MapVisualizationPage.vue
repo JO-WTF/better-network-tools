@@ -1274,7 +1274,7 @@ const appendRowsFromFeatures = (features) => {
   if (!activeDataset.value) return;
   const start = activeDataset.value.rows.length + 1;
 
-  const nextRows = features.map((feature, index) => {
+  let nextRows = features.map((feature, index) => {
     const gid = start + index;
     const featureKey = `d${activeDataset.value.id}-f${featureCounter.value}`;
     featureCounter.value += 1;
@@ -1325,6 +1325,9 @@ const appendRowsFromFeatures = (features) => {
   activeDataset.value.extraColumns = Array.from(extraColumns);
   ensureValidGeometryFilter();
   refreshSource();
+
+  // Release large temporary array as early as possible.
+  nextRows = [];
 };
 
 const refreshSource = () => {
@@ -1428,15 +1431,19 @@ const processFile = async (file) => {
   if (!file) return;
 
   isProcessing.value = true;
+  let features = [];
+  let data = null;
+  let workbook = null;
+  let rows = null;
+  let text = "";
   try {
     const extension = file.name.split(".").pop()?.toLowerCase();
-    let features = [];
 
     if (extension === "xlsx" || extension === "xls") {
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(new Uint8Array(data), { type: "array" });
+      data = await file.arrayBuffer();
+      workbook = XLSX.read(new Uint8Array(data), { type: "array" });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet);
+      rows = XLSX.utils.sheet_to_json(sheet);
       features = rows
         .map((row) => {
           const geometry = detectGeometryFromRow(row);
@@ -1445,7 +1452,7 @@ const processFile = async (file) => {
         })
         .filter(Boolean);
     } else {
-      const text = await file.text();
+      text = await file.text();
       features = parseContentToFeatures(text);
     }
 
@@ -1457,6 +1464,13 @@ const processFile = async (file) => {
     console.error("文件上传解析失败:", error);
     alert("文件解析失败，请检查文件格式是否正确。");
   } finally {
+    if (Array.isArray(features)) features.length = 0;
+    if (Array.isArray(rows)) rows.length = 0;
+    data = null;
+    workbook = null;
+    rows = null;
+    text = "";
+    features = [];
     isProcessing.value = false;
   }
 };
