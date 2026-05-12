@@ -464,6 +464,21 @@ const readSavedSchemes = () => {
   }
 };
 
+const fetchSchemeFromServer = async (shareId) => {
+  const resp = await fetch(`http://${window.location.hostname}:8766/api/schemes/${encodeURIComponent(shareId)}`);
+  if (!resp.ok) throw new Error("方案读取失败");
+  return resp.json();
+};
+
+const saveSchemeToServerFile = async (shareId, payload) => {
+  const resp = await fetch(`http://${window.location.hostname}:8766/api/schemes/${encodeURIComponent(shareId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!resp.ok) throw new Error("方案保存失败");
+};
+
 const createShareId = () => {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -476,7 +491,7 @@ const createShareId = () => {
   return `scheme_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
 };
 
-const saveSchemeToServer = () => {
+const saveSchemeToServer = async () => {
   const schemeName = window.prompt("请输入方案名称（同名会覆盖）", "默认方案");
   if (!schemeName) return;
   const allSchemes = readSavedSchemes();
@@ -490,6 +505,13 @@ const saveSchemeToServer = () => {
   const nextSchemes = allSchemes.filter((item) => item.name !== schemeName);
   nextSchemes.push(payload);
   localStorage.setItem(schemeStorageKey, JSON.stringify(nextSchemes));
+  try {
+    await saveSchemeToServerFile(shareId, payload);
+  } catch (error) {
+    console.error(error);
+    alert("方案保存到服务端失败，请确认后端已启动。");
+    return;
+  }
   const shareUrl = `${window.location.origin}${window.location.pathname}?scheme=${encodeURIComponent(shareId)}`;
   window.history.replaceState({}, "", `${window.location.pathname}?scheme=${encodeURIComponent(shareId)}`);
   window.prompt("分享链接（已保存，可复制）", shareUrl);
@@ -1663,15 +1685,14 @@ onMounted(() => {
   const params = new URLSearchParams(window.location.search);
   const schemeId = params.get("scheme");
   if (schemeId) {
-    const target = readSavedSchemes().find((item) => item.shareId === schemeId);
-    if (target) {
-      try {
+    fetchSchemeFromServer(schemeId)
+      .then((target) => {
         applySchemePayload(target);
         schemeShareId.value = schemeId;
-      } catch (error) {
+      })
+      .catch((error) => {
         console.error(error);
-      }
-    }
+      });
   }
   ensureMap();
 });
