@@ -231,17 +231,19 @@ class WebSocketHandler:
                             destination_coords = None
                         await websocket.send(progress({
                             "processed": index,
-                            "success": result.get("success"),
-                            "distanceKm": result.get("distanceKm"),
-                            "durationMin": result.get("durationMin"),
-                            "errorType": result.get("errorType"),
-                            "request": result.get("request"),
-                            "response": result.get("response"),
-                            "originLat": origin_coords[0] if origin_coords else None,
-                            "originLng": origin_coords[1] if origin_coords else None,
-                            "destinationLat": destination_coords[0] if destination_coords else None,
-                            "destinationLng": destination_coords[1] if destination_coords else None,
-                            "index": index - 1,
+                            "results": [{
+                                "success": result.get("success"),
+                                "distanceKm": result.get("distanceKm"),
+                                "durationMin": result.get("durationMin"),
+                                "errorType": result.get("errorType"),
+                                "request": result.get("request"),
+                                "response": result.get("response"),
+                                "originLat": origin_coords[0] if origin_coords else None,
+                                "originLng": origin_coords[1] if origin_coords else None,
+                                "destinationLat": destination_coords[0] if destination_coords else None,
+                                "destinationLng": destination_coords[1] if destination_coords else None,
+                                "index": index - 1,
+                            }],
                         }))
                 else:
                     for index, address in enumerate(addresses, start=1):
