@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from pathlib import Path
 
 from server.config.settings import get_settings
@@ -9,6 +10,9 @@ from server.services.auth_service import AuthService
 from server.services.provider_registry import ProviderRegistry
 from server.services.route_matrix_service import RouteMatrixService
 import pandas as pd
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def _load_config(config_file: Path):
@@ -61,6 +65,7 @@ async def _run(*, input_file: str, output_file: str, start_col: str, end_col: st
     http_client = HttpClient(settings.request_timeout_s)
 
     try:
+        logger.info("debug_route_matrix: loading input file=%s config=%s", input_file, config_file)
         df = _load_rows(Path(input_file))
         routes = []
         if input_mode not in {"coordinate", "address"}:
@@ -85,6 +90,12 @@ async def _run(*, input_file: str, output_file: str, start_col: str, end_col: st
         }
 
         result = await route_matrix_service.execute(http_client, config, routes)
+        logger.info(
+            "debug_route_matrix: route_matrix completed success=%s routes=%d results=%d",
+            result.get("success", False),
+            len(routes),
+            len(result.get("results", [])),
+        )
         result_lookup = {int(item.get("index")): item for item in result.get("results", [])}
 
         df["导航距离(km)"] = ""

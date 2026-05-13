@@ -854,25 +854,6 @@ async def route_matrix(http_client, auth, config, routes, progress_callback=None
     if not route_url:
         return error_result("config_error", "routeUrl", "缺少导航接口地址")
 
-    matrix_max_size = int(config.get("matrixMaxSize", 10))
-    matrix_min_density = float(config.get("matrixMinDensity", 0.5))
-    matrix_min_valid_edges = int(config.get("matrixMinValidEdges", 6))
-    matrix_score_mode = config.get("matrixScoreMode", "valid_x_density")
-    matrix_request_overhead = float(config.get("matrixRequestOverhead", 0))
-
-    matrix_top_destination_seed_count = config.get("matrixTopDestinationSeedCount", 300)
-    if matrix_top_destination_seed_count is not None:
-        matrix_top_destination_seed_count = int(matrix_top_destination_seed_count)
-
-    matrix_top_signature_count = config.get("matrixTopSignatureCount", 120)
-    if matrix_top_signature_count is not None:
-        matrix_top_signature_count = int(matrix_top_signature_count)
-
-    enable_signature_candidates = bool(config.get("matrixEnableSignatureCandidates", True))
-    enable_signature_merge = bool(config.get("matrixEnableSignatureMerge", True))
-    max_signature_merge_groups = int(config.get("matrixMaxSignatureMergeGroups", 2))
-
-
     point_lookup = {}
     route_pairs = []
 
@@ -937,16 +918,6 @@ async def route_matrix(http_client, auth, config, routes, progress_callback=None
 
     request_batches = _plan_matrix_batches(
         missing_pairs=missing_pairs,
-        max_size=matrix_max_size,
-        min_density=matrix_min_density,
-        similarity_threshold=float(config.get("matrixSimilarityThreshold", 0.5)),
-        min_valid_edges=matrix_min_valid_edges,
-        exact_group_min_destinations=int(config.get("matrixExactGroupMinDestinations", 10)),
-        exact_group_min_valid_edges=int(config.get("matrixExactGroupMinValidEdges", 50)),
-        top_k_candidates=int(config.get("matrixTopKCandidates", 50)),
-        sample_origin_count=int(config.get("matrixSampleOriginCount", 32)),
-        max_expand_steps_per_cluster=int(config.get("matrixMaxExpandStepsPerCluster", 10)),
-        max_dense_clusters=int(config.get("matrixMaxDenseClusters", 500)),
     )
 
     logger.info(
