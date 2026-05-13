@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from pathlib import Path
 
 from server.config.settings import get_settings
@@ -10,10 +11,40 @@ from server.services.provider_registry import ProviderRegistry
 from server.services.route_matrix_service import RouteMatrixService
 import pandas as pd
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 def _load_config(config_file: Path):
     with config_file.open("r", encoding="utf-8") as f:
         return json.load(f)
+
+
+
+
+def _normalize_lonlat_to_latlng(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+
+    delimiter = "," if "," in raw else "，" if "，" in raw else None
+    if not delimiter:
+        return raw
+
+    parts = [item.strip() for item in raw.split(delimiter)]
+    if len(parts) < 2:
+        return raw
+
+    try:
+        lng = float(parts[0])
+        lat = float(parts[1])
+    except ValueError:
+        return raw
+
+    if -180 <= lng <= 180 and -90 <= lat <= 90:
+        return f"{lat:.6f},{lng:.6f}"
+
+    return raw
 
 
 def _load_rows(input_path: Path):
@@ -34,14 +65,15 @@ async def _run(*, input_file: str, output_file: str, start_col: str, end_col: st
     http_client = HttpClient(settings.request_timeout_s)
 
     try:
+        logger.info("debug_route_matrix: loading input file=%s config=%s", input_file, config_file)
         df = _load_rows(Path(input_file))
         routes = []
         if input_mode not in {"coordinate", "address"}:
             raise ValueError(f"不支持的 input_mode: {input_mode}")
 
         for idx, row in df.iterrows():
-            origin_raw = str(row.get(start_col, "")).strip()
-            destination_raw = str(row.get(end_col, "")).strip()
+            origin_raw = _normalize_lonlat_to_latlng(row.get(start_col, ""))
+            destination_raw = _normalize_lonlat_to_latlng(row.get(end_col, ""))
             if not origin_raw or not destination_raw:
                 continue
             routes.append({"index": int(idx), "origin": origin_raw, "destination": destination_raw})
@@ -58,6 +90,12 @@ async def _run(*, input_file: str, output_file: str, start_col: str, end_col: st
         }
 
         result = await route_matrix_service.execute(http_client, config, routes)
+        logger.info(
+            "debug_route_matrix: route_matrix completed success=%s routes=%d results=%d",
+            result.get("success", False),
+            len(routes),
+            len(result.get("results", [])),
+        )
         result_lookup = {int(item.get("index")): item for item in result.get("results", [])}
 
         df["导航距离(km)"] = ""
@@ -99,10 +137,10 @@ async def _run(*, input_file: str, output_file: str, start_col: str, end_col: st
 
 if __name__ == "__main__":
     # ===== 本地调试参数（按需修改） =====
-    INPUT_FILE = "./routes.csv"
+    INPUT_FILE = "./routes.xlsx"
     OUTPUT_FILE = ""  # 为空时自动输出为 calculated_<输入文件名>
-    START_COL = "仓库经纬度"
-    END_COL = "站点经纬度"
+    START_COL = "起点经纬度"
+    END_COL = "终点经纬度"
     INPUT_MODE = "coordinate"  # coordinate | address
     CONFIG_FILE = "config.json"
 
