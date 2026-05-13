@@ -5,6 +5,7 @@ from itertools import combinations
 from server.providers.common.request_builder import auth_headers
 from server.providers.common.result_builder import error_result
 from server.utils.json_utils import safe_json_dumps
+from server.providers.custom.matrix_batch_planner import _plan_matrix_batches
 
 logger = logging.getLogger(__name__)
 
@@ -934,19 +935,18 @@ async def route_matrix(http_client, auth, config, routes, progress_callback=None
     last_error = None
     streamed_batches = []
 
-    request_batches = _plan_matrix_batches_by_greedy(
+    request_batches = _plan_matrix_batches(
         missing_pairs=missing_pairs,
         max_size=matrix_max_size,
         min_density=matrix_min_density,
+        similarity_threshold=float(config.get("matrixSimilarityThreshold", 0.5)),
         min_valid_edges=matrix_min_valid_edges,
-        score_mode=matrix_score_mode,
-        request_overhead=matrix_request_overhead,
-        top_origin_seed_count=None,
-        top_destination_seed_count=matrix_top_destination_seed_count,
-        enable_signature_candidates=enable_signature_candidates,
-        enable_signature_merge=enable_signature_merge,
-        max_signature_merge_groups=max_signature_merge_groups,
-        top_signature_count=matrix_top_signature_count,
+        exact_group_min_destinations=int(config.get("matrixExactGroupMinDestinations", 10)),
+        exact_group_min_valid_edges=int(config.get("matrixExactGroupMinValidEdges", 50)),
+        top_k_candidates=int(config.get("matrixTopKCandidates", 50)),
+        sample_origin_count=int(config.get("matrixSampleOriginCount", 32)),
+        max_expand_steps_per_cluster=int(config.get("matrixMaxExpandStepsPerCluster", 10)),
+        max_dense_clusters=int(config.get("matrixMaxDenseClusters", 500)),
     )
 
     logger.info(
