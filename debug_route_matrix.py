@@ -137,10 +137,10 @@ async def _run(*, input_file: str, output_file: str, start_col: str, end_col: st
 
 if __name__ == "__main__":
     # ===== 本地调试参数（按需修改） =====
-    INPUT_FILE = "./routes.csv"
+    INPUT_FILE = "./routes.xlsx"
     OUTPUT_FILE = ""  # 为空时自动输出为 calculated_<输入文件名>
-    START_COL = "仓库经纬度"
-    END_COL = "站点经纬度"
+    START_COL = "起点经纬度"
+    END_COL = "终点经纬度"
     INPUT_MODE = "coordinate"  # coordinate | address
     CONFIG_FILE = "config.json"
 
