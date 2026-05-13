@@ -306,6 +306,13 @@
         </div>
       </div>
     </div>
+
+    <!-- Toast Notification -->
+    <Transition name="toast">
+      <div v-if="showToast" class="toast">
+        {{ toastMessage }}
+      </div>
+    </Transition>
   </section>
 </template>
 
@@ -361,6 +368,8 @@ let mapPopup = null;
 const pointLayerPrefix = "viz-dataset-point-layer-";
 const pointSourcePrefix = "viz-dataset-point-source-";
 const schemeShareId = ref("");
+const showToast = ref(false);
+const toastMessage = ref("");
 
 const activeDataset = computed(() => datasets.value.find((d) => d.id === activeDatasetId.value));
 
@@ -442,10 +451,18 @@ const handleSchemeImportFile = async (event) => {
     applySchemePayload(payload);
     await waitForMapFlush();
     fitMapToVisibleFeatures();
-    alert("方案导入成功。");
+    toastMessage.value = "方案导入成功。";
+    showToast.value = true;
+    setTimeout(() => {
+      showToast.value = false;
+    }, 2000);
   } catch (error) {
     console.error(error);
-    alert("方案导入失败，请检查 JSON 文件格式。");
+    toastMessage.value = "方案导入失败，请检查 JSON 文件格式。";
+    showToast.value = true;
+    setTimeout(() => {
+      showToast.value = false;
+    }, 2000);
   } finally {
     event.target.value = "";
   }
@@ -736,12 +753,20 @@ const confirmAddField = () => {
   
   const lower = column.toLowerCase();
   if (["gid", "geometry"].includes(lower) || lower.startsWith("__")) {
-    alert("该名称为系统保留字段，请使用其他名称。");
+    toastMessage.value = "该名称为系统保留字段，请使用其他名称。";
+    showToast.value = true;
+    setTimeout(() => {
+      showToast.value = false;
+    }, 2000);
     return;
   }
   
   if (activeDataset.value.extraColumns.includes(column)) {
-    alert("该字段已存在。");
+    toastMessage.value = "该字段已存在。";
+    showToast.value = true;
+    setTimeout(() => {
+      showToast.value = false;
+    }, 2000);
     return;
   }
 
@@ -1471,7 +1496,11 @@ const processFile = async (file) => {
     }
   } catch (error) {
     console.error("文件上传解析失败:", error);
-    alert("文件解析失败，请检查文件格式是否正确。");
+    toastMessage.value = "文件解析失败，请检查文件格式是否正确。";
+    showToast.value = true;
+    setTimeout(() => {
+      showToast.value = false;
+    }, 2000);
   } finally {
     if (Array.isArray(features)) features.length = 0;
     if (Array.isArray(rows)) rows.length = 0;

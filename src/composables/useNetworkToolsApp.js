@@ -1334,9 +1334,6 @@ const startGeocode = async () => {
   routeLines.value = [];
   renderedPointKeys.clear();
   renderedRouteKeys.clear();
-  if (mapRealtimeUpdate.value) {
-    refreshMarkers();
-  }
   geocodeState.running = true;
   geocodeState.processed = 0;
   geocodeState.current = "";
@@ -1370,6 +1367,9 @@ const startGeocode = async () => {
         response: result.response,
       });
     }
+    if (mapRealtimeUpdate.value) {
+      refreshMarkers();
+    }
   }
 
   geocodeState.running = false;
@@ -1385,9 +1385,6 @@ const startReverseGeocode = async () => {
   routeLines.value = [];
   renderedPointKeys.clear();
   renderedRouteKeys.clear();
-  if (mapRealtimeUpdate.value) {
-    refreshMarkers();
-  }
   geocodeState.running = true;
   geocodeState.processed = 0;
   geocodeState.current = "";
@@ -1435,6 +1432,9 @@ const startReverseGeocode = async () => {
         request: result.request,
         response: result.response,
       });
+    }
+    if (mapRealtimeUpdate.value) {
+      refreshMarkers();
     }
   }
 
@@ -1499,6 +1499,68 @@ const startRoute = async () => {
   geocodeState.current = "";
   geocodeState.total = rows.value.length;
 
+  const getReault = async (parsedOrigin, parsedDestination) => {
+    const result = await fetchRoute(
+      parsedOrigin.lat,
+      parsedOrigin.lng,
+      parsedDestination.lat,
+      parsedDestination.lng
+    );
+    if (result.success && result.line?.coordinates) {
+      result.line.coordinates = [
+        [parsedOrigin.lng, parsedOrigin.lat],
+        [parsedDestination.lng, parsedDestination.lat]
+      ]
+    }
+    return result
+  }
+
+  const resultJudge = (parsedOrigin, parsedDestination, result, origin, destination) => {
+    pushPointIfNeeded({
+      lat: normalizeCoordinate(parsedOrigin.lat),
+      lng: normalizeCoordinate(parsedOrigin.lng),
+      type: "origin",
+      label: "起点",
+      ...(routeInputMode.value === "coordinate" ? {} : { address: origin }),
+      displayMode: routeInputMode.value === "coordinate" ? "coordinate-only" : "full",
+    });
+
+    pushPointIfNeeded({
+      lat: normalizeCoordinate(parsedDestination.lat),
+      lng: normalizeCoordinate(parsedDestination.lng),
+      type: "destination",
+      failed: false,
+      label: "终点",
+      ...(routeInputMode.value === "coordinate" ? {} : { address: destination }),
+      displayMode: routeInputMode.value === "coordinate" ? "coordinate-only" : "full",
+    });
+
+    if(result.success){
+      pushRouteLineIfNeeded({
+        distanceKm: result.distanceKm,
+        durationMin: result.durationMin,
+        failed: false,
+        geometry: result.line,
+      });
+    }else{
+      pushRouteLineIfNeeded({
+        distanceKm: "",
+        durationMin: "",
+        failed: true,
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [normalizeCoordinate(parsedOrigin.lng), normalizeCoordinate(parsedOrigin.lat)],
+            [
+              normalizeCoordinate(parsedDestination.lng),
+              normalizeCoordinate(parsedDestination.lat),
+            ],
+          ],
+        },
+      });
+    }
+  }
+
   for (const row of rows.value) {
     const origin = String(row[startColumnName.value] ?? "").trim();
     const destination = String(row[endColumnName.value] ?? "").trim();
@@ -1536,12 +1598,7 @@ const startRoute = async () => {
         parsedDestination.lng
       );
       if (!result) {
-        result = await fetchRoute(
-          parsedOrigin.lat,
-          parsedOrigin.lng,
-          parsedDestination.lat,
-          parsedDestination.lng
-        );
+        result = await getReault(parsedOrigin, parsedDestination)
         routeCache.set(routeKey, result);
         if (result.success) {
           setPersistentCacheValue("route", pairKey, result);
@@ -1552,62 +1609,9 @@ const startRoute = async () => {
         row["导航距离(km)"] = result.distanceKm;
         row["导航时间(min)"] = result.durationMin;
 
-        pushPointIfNeeded({
-          lat: normalizeCoordinate(parsedOrigin.lat),
-          lng: normalizeCoordinate(parsedOrigin.lng),
-          type: "origin",
-          label: "起点",
-          displayMode: "coordinate-only",
-        });
-
-        pushPointIfNeeded({
-          lat: normalizeCoordinate(parsedDestination.lat),
-          lng: normalizeCoordinate(parsedDestination.lng),
-          type: "destination",
-          failed: false,
-          label: "终点",
-          displayMode: "coordinate-only",
-        });
-
-        pushRouteLineIfNeeded({
-          distanceKm: result.distanceKm,
-          durationMin: result.durationMin,
-          failed: false,
-          geometry: result.line,
-        });
+        resultJudge(parsedOrigin, parsedDestination, result)
       } else {
-        pushPointIfNeeded({
-          lat: normalizeCoordinate(parsedOrigin.lat),
-          lng: normalizeCoordinate(parsedOrigin.lng),
-          type: "origin",
-          label: "起点",
-          displayMode: "coordinate-only",
-        });
-
-        pushPointIfNeeded({
-          lat: normalizeCoordinate(parsedDestination.lat),
-          lng: normalizeCoordinate(parsedDestination.lng),
-          type: "destination",
-          failed: true,
-          label: "终点",
-          displayMode: "coordinate-only",
-        });
-
-        pushRouteLineIfNeeded({
-          distanceKm: "",
-          durationMin: "",
-          failed: true,
-          geometry: {
-            type: "LineString",
-            coordinates: [
-              [normalizeCoordinate(parsedOrigin.lng), normalizeCoordinate(parsedOrigin.lat)],
-              [
-                normalizeCoordinate(parsedDestination.lng),
-                normalizeCoordinate(parsedDestination.lat),
-              ],
-            ],
-          },
-        });
+        resultJudge(parsedOrigin, parsedDestination, result)
 
         logs.value.push({
           address: routeKey,
@@ -1646,12 +1650,7 @@ const startRoute = async () => {
           response: failure.response,
         };
       } else {
-        result = await fetchRoute(
-          originResult.lat,
-          originResult.lng,
-          destinationResult.lat,
-          destinationResult.lng
-        );
+        result = await getReault(originResult, destinationResult)
       }
       routeCache.set(routeKey, result);
       if (result.success) {
@@ -1664,70 +1663,13 @@ const startRoute = async () => {
       row["导航距离(km)"] = result.distanceKm;
       row["导航时间(min)"] = result.durationMin;
 
-      pushPointIfNeeded({
-        lat: normalizeCoordinate(result.origin.lat),
-        lng: normalizeCoordinate(result.origin.lng),
-        type: "origin",
-        label: "起点",
-        address: origin,
-        displayMode: "full",
-      });
-
-      pushPointIfNeeded({
-        lat: normalizeCoordinate(result.destination.lat),
-        lng: normalizeCoordinate(result.destination.lng),
-        type: "destination",
-        failed: false,
-        label: "终点",
-        address: destination,
-        displayMode: "full",
-      });
-
-      pushRouteLineIfNeeded({
-        distanceKm: result.distanceKm,
-        durationMin: result.durationMin,
-        failed: false,
-        geometry: result.line,
-      });
+      resultJudge(result.origin, result.destination, result, origin, destination)
     } else {
       if (routeInputMode.value === "address") {
         const originResult = geocodeCache.get(origin);
         const destinationResult = geocodeCache.get(destination);
         if (originResult?.success && destinationResult?.success) {
-          pushPointIfNeeded({
-            lat: normalizeCoordinate(originResult.lat),
-            lng: normalizeCoordinate(originResult.lng),
-            type: "origin",
-            label: "起点",
-            address: origin,
-            displayMode: "full",
-          });
-
-          pushPointIfNeeded({
-            lat: normalizeCoordinate(destinationResult.lat),
-            lng: normalizeCoordinate(destinationResult.lng),
-            type: "destination",
-            failed: true,
-            label: "终点",
-            address: destination,
-            displayMode: "full",
-          });
-
-          pushRouteLineIfNeeded({
-            distanceKm: "",
-            durationMin: "",
-            failed: true,
-            geometry: {
-              type: "LineString",
-              coordinates: [
-                [normalizeCoordinate(originResult.lng), normalizeCoordinate(originResult.lat)],
-                [
-                  normalizeCoordinate(destinationResult.lng),
-                  normalizeCoordinate(destinationResult.lat),
-                ],
-              ],
-            },
-          });
+          resultJudge(originResult, destinationResult, result, origin, destination)          
         }
       }
 
@@ -1737,6 +1679,9 @@ const startRoute = async () => {
         request: result.request,
         response: result.response,
       });
+    }
+    if (mapRealtimeUpdate.value) {
+      refreshMarkers();
     }
   }
 
