@@ -18,10 +18,12 @@ class WebSocketHandler:
         self.custom_config = custom_config
 
 
-    def _merge_custom_config(self, config):
-        if str(config.get("provider", "")).lower() != "custom":
-            return config
-        merged = dict(config)
+    def _merge_custom_config(self, config, provider):
+        merged = dict(config or {})
+        resolved_provider = str(provider or merged.get("provider", "")).lower()
+        if resolved_provider != "custom":
+            return merged
+        merged["provider"] = "custom"
         merged["appId"] = self.custom_config.app_id
         merged["credential"] = self.custom_config.credential
         merged["tokenUrl"] = self.custom_config.token_url
@@ -45,14 +47,15 @@ class WebSocketHandler:
                 continue
             mode = request.get("mode", "geocode")
             route_input_mode = request.get("routeInputMode", "address")
-            config = self._merge_custom_config(request.get("config", {}))
+            provider = request.get("provider")
+            config = self._merge_custom_config(request.get("config", {}), provider)
             addresses = request.get("addresses", [])
             routes = request.get("routes", [])
             context = ConnectionContext()
 
             http_client = self.http_client_factory()
             try:
-                if mode == "route" and (str(config.get("provider", "")).lower() == "custom" or bool(config.get("tokenUrl"))):
+                if mode == "route" and (str(provider or config.get("provider", "")).lower() == "custom" or bool(config.get("tokenUrl"))):
                     indexed_routes = []
                     invalid_items = []
                     for index, route in enumerate(routes, start=1):
