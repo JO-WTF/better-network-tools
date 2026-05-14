@@ -109,6 +109,10 @@ const loadInitialState = () => {
     providerApiKey.value =
       provider.value === "mapbox" ? mapboxGeocodeApiKey.value : hereGeocodeApiKey.value;
   }
+  if (provider.value === "custom" && mode.value !== "route") {
+    provider.value = "mapbox";
+    providerApiKey.value = mapboxGeocodeApiKey.value;
+  }
   const savedReverseMode = localStorage.getItem(storageKeys.reverseColumnMode);
   if (savedReverseMode === "single" || savedReverseMode === "separate") {
     reverseColumnMode.value = savedReverseMode;
@@ -405,29 +409,10 @@ const canStart = computed(() => {
     return false;
   }
   if (provider.value === "custom") {
-    if (mode.value === "reverse") {
+    if (mode.value !== "route") {
       return false;
     }
-    if (mode.value === "route") {
-      return Boolean(
-        customAppId.value &&
-          customCredential.value &&
-          customTokenUrl.value &&
-          (routeInputMode.value === "address" ? customGeocodeUrl.value : true) &&
-          customRouteUrl.value &&
-          customWebSocketUrl.value &&
-          startColumnName.value &&
-          endColumnName.value
-      );
-    }
-    return Boolean(
-      customAppId.value &&
-        customCredential.value &&
-        customTokenUrl.value &&
-        customGeocodeUrl.value &&
-        customWebSocketUrl.value &&
-        columnName.value
-    );
+    return Boolean(customWebSocketUrl.value && startColumnName.value && endColumnName.value);
   }
   if (!providerApiKey.value) {
     return false;
@@ -2312,7 +2297,7 @@ watch(mapRealtimeUpdate, (value, oldValue) => {
 
 watch(mode, (value) => {
   localStorage.setItem(storageKeys.mode, value);
-  if (value === "reverse" && provider.value === "custom") {
+  if (value !== "route" && provider.value === "custom") {
     provider.value = "mapbox";
   }
 

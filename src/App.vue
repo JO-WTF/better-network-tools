@@ -177,10 +177,10 @@
             <select v-model="provider">
               <option value="mapbox">Mapbox</option>
               <option value="here">HERE</option>
-              <option value="custom" :disabled="mode === 'reverse'">自定义接口</option>
+              <option value="custom" :disabled="mode !== 'route'">自定义接口</option>
             </select>
           </label>
-          <p v-if="mode === 'reverse'" class="hint">自定义接口暂不支持反编码。</p>
+          <p v-if="mode !== 'route'" class="hint">自定义接口仅支持导航距离计算。</p>
           <p class="hint">服务商密钥与接口地址请在右上角设置中填写。</p>
           <div class="actions">
             <button class="primary" :disabled="!canStart" @click="handleStart">
