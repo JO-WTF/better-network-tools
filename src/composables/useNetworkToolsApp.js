@@ -820,12 +820,7 @@ const startCustomGeocode = () => {
       JSON.stringify({
         type: "start",
         payload: {
-          config: {
-            appId: customAppId.value,
-            credential: customCredential.value,
-            tokenUrl: customTokenUrl.value,
-            geocodeUrl: customGeocodeUrl.value,
-          },
+          provider: "custom",
           addresses,
         },
       })
@@ -984,14 +979,8 @@ const startCustomRoute = () => {
         type: "start",
         payload: {
           mode: "route",
+          provider: "custom",
           routeInputMode: routeInputMode.value,
-          config: {
-            appId: customAppId.value,
-            credential: customCredential.value,
-            tokenUrl: customTokenUrl.value,
-            geocodeUrl: customGeocodeUrl.value,
-            routeUrl: customRouteUrl.value,
-          },
           routes: routes.map((route) => ({
             origin: route.origin,
             destination: route.destination,
