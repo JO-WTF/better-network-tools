@@ -10,11 +10,25 @@ logger = logging.getLogger(__name__)
 
 
 class WebSocketHandler:
-    def __init__(self, geocode_service, route_service, route_matrix_service, http_client_factory):
+    def __init__(self, geocode_service, route_service, route_matrix_service, http_client_factory, custom_config):
         self.geocode_service = geocode_service
         self.route_service = route_service
         self.route_matrix_service = route_matrix_service
         self.http_client_factory = http_client_factory
+        self.custom_config = custom_config
+
+
+    def _build_request_config(self, request_config, provider):
+        if str(provider or "").lower() == "custom":
+            return {
+                "provider": "custom",
+                "appId": self.custom_config.app_id,
+                "credential": self.custom_config.credential,
+                "tokenUrl": self.custom_config.token_url,
+                "geocodeUrl": self.custom_config.geocode_url,
+                "routeUrl": self.custom_config.route_url,
+            }
+        return dict(request_config or {})
 
     async def handle_connection(self, websocket):
         async for message in websocket:
@@ -32,14 +46,15 @@ class WebSocketHandler:
                 continue
             mode = request.get("mode", "geocode")
             route_input_mode = request.get("routeInputMode", "address")
-            config = request.get("config", {})
+            provider = request.get("provider")
+            config = self._build_request_config(request.get("config", {}), provider)
             addresses = request.get("addresses", [])
             routes = request.get("routes", [])
             context = ConnectionContext()
 
             http_client = self.http_client_factory()
             try:
-                if mode == "route" and (str(config.get("provider", "")).lower() == "custom" or bool(config.get("tokenUrl"))):
+                if mode == "route" and (str(provider or config.get("provider", "")).lower() == "custom" or bool(config.get("tokenUrl"))):
                     indexed_routes = []
                     invalid_items = []
                     for index, route in enumerate(routes, start=1):

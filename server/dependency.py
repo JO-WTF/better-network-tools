@@ -22,5 +22,6 @@ def build_dependencies():
         route_service,
         route_matrix_service,
         lambda: HttpClient(settings.request_timeout_s),
+        settings.custom,
     )
     return settings, ws_handler
