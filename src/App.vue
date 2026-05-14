@@ -280,26 +280,7 @@
           </div>
           <div class="settings-section">
             <h3>自定义接口</h3>
-            <label class="field">
-              <span>App ID</span>
-              <input v-model="customAppId" type="text" placeholder="输入 App ID" />
-            </label>
-            <label class="field">
-              <span>Credential</span>
-              <input v-model="customCredential" type="password" placeholder="输入 Credential" />
-            </label>
-            <label class="field">
-              <span>Token 接口 URL</span>
-              <input v-model="customTokenUrl" type="text" placeholder="getResAppDynamicToken 接口地址" />
-            </label>
-            <label class="field">
-              <span>地理编码接口 URL</span>
-              <input v-model="customGeocodeUrl" type="text" placeholder="geographicSearch 接口地址" />
-            </label>
-            <label class="field">
-              <span>导航接口 URL</span>
-              <input v-model="customRouteUrl" type="text" placeholder="routeSearch 接口地址" />
-            </label>
+            <p class="hint">App ID、Credential 与自定义接口 URL 已迁移到服务端配置文件。</p>
             <label class="field">
               <span>WebSocket 地址</span>
               <input v-model="customWebSocketUrl" type="text" placeholder="ws://localhost:8765" />

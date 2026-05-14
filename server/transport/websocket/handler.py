@@ -10,11 +10,24 @@ logger = logging.getLogger(__name__)
 
 
 class WebSocketHandler:
-    def __init__(self, geocode_service, route_service, route_matrix_service, http_client_factory):
+    def __init__(self, geocode_service, route_service, route_matrix_service, http_client_factory, custom_config):
         self.geocode_service = geocode_service
         self.route_service = route_service
         self.route_matrix_service = route_matrix_service
         self.http_client_factory = http_client_factory
+        self.custom_config = custom_config
+
+
+    def _merge_custom_config(self, config):
+        if str(config.get("provider", "")).lower() != "custom":
+            return config
+        merged = dict(config)
+        merged["appId"] = self.custom_config.app_id
+        merged["credential"] = self.custom_config.credential
+        merged["tokenUrl"] = self.custom_config.token_url
+        merged["geocodeUrl"] = self.custom_config.geocode_url
+        merged["routeUrl"] = self.custom_config.route_url
+        return merged
 
     async def handle_connection(self, websocket):
         async for message in websocket:
@@ -32,7 +45,7 @@ class WebSocketHandler:
                 continue
             mode = request.get("mode", "geocode")
             route_input_mode = request.get("routeInputMode", "address")
-            config = request.get("config", {})
+            config = self._merge_custom_config(request.get("config", {}))
             addresses = request.get("addresses", [])
             routes = request.get("routes", [])
             context = ConnectionContext()

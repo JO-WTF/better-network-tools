@@ -4,17 +4,13 @@ import * as XLSX from "xlsx";
 import { useGeocode } from "./useGeocode";
 import { useReverseGeocode } from "./useReverseGeocode";
 import { useRoute } from "./useRoute";
+import { appConfig } from "../config";
 
 const storageKeys = {
   provider: "geocode_provider",
   mapboxGeocode: "mapbox_geocode_api_key",
   hereGeocode: "here_geocode_api_key",
   mapboxMap: "mapbox_map_api_key",
-  customAppId: "custom_app_id",
-  customCredential: "custom_credential",
-  customTokenUrl: "custom_token_url",
-  customGeocodeUrl: "custom_geocode_url",
-  customRouteUrl: "custom_route_url",
   customWebSocketUrl: "custom_websocket_url",
   columnName: "geocode_column_name",
   latColumnName: "reverse_lat_column_name",
@@ -58,17 +54,7 @@ const customTokenUrl = ref("");
 const customGeocodeUrl = ref("");
 const customRouteUrl = ref("");
 const customToken = ref("");
-const defaultWebSocketUrl = () => {
-  if (typeof window === "undefined") return "ws://sim.isc.huawei.com:8765";
-  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  const hostname = window.location.hostname;
-  const resolvedHost =
-    hostname === "0.0.0.0" || hostname === "localhost" || hostname === "127.0.0.1"
-      ? "sim.isc.huawei.com"
-      : hostname;
-  return `${protocol}://${resolvedHost}:8765`;
-};
-const customWebSocketUrl = ref(defaultWebSocketUrl());
+const customWebSocketUrl = ref(appConfig.wsUrl);
 const customSocket = ref(null);
 const mapApiKey = ref("");
 const mapRealtimeUpdate = ref(true);
@@ -102,17 +88,7 @@ const loadInitialState = () => {
   if (savedProvider === "mapbox" || savedProvider === "here" || savedProvider === "custom") {
     provider.value = savedProvider;
   }
-  const savedAppId = localStorage.getItem(storageKeys.customAppId);
-  const savedCredential = localStorage.getItem(storageKeys.customCredential);
-  const savedTokenUrl = localStorage.getItem(storageKeys.customTokenUrl);
-  const savedGeocodeUrl = localStorage.getItem(storageKeys.customGeocodeUrl);
-  const savedRouteUrl = localStorage.getItem(storageKeys.customRouteUrl);
   const savedWebSocketUrl = localStorage.getItem(storageKeys.customWebSocketUrl);
-  if (savedAppId) customAppId.value = savedAppId;
-  if (savedCredential) customCredential.value = savedCredential;
-  if (savedTokenUrl) customTokenUrl.value = savedTokenUrl;
-  if (savedGeocodeUrl) customGeocodeUrl.value = savedGeocodeUrl;
-  if (savedRouteUrl) customRouteUrl.value = savedRouteUrl;
   if (savedWebSocketUrl) customWebSocketUrl.value = savedWebSocketUrl;
 
   if (provider.value !== "custom") {
@@ -177,6 +153,7 @@ const loadInitialState = () => {
 };
 
 loadInitialState();
+
 
 const logs = ref([]);
 const showSettings = ref(false);
@@ -1725,6 +1702,8 @@ const handleSingleAction = async () => {
         });
         if (mapRealtimeUpdate.value) {
           scheduleRealtimeRefresh({ fitBounds: true });
+        } else {
+          refreshMarkers({ fitBounds: true });
         }
       } else {
         singleResult.value = {
@@ -1764,6 +1743,8 @@ const handleSingleAction = async () => {
             });
             if (mapRealtimeUpdate.value) {
               scheduleRealtimeRefresh({ fitBounds: true });
+            } else {
+              refreshMarkers({ fitBounds: true });
             }
           } else {
             singleResult.value = {
@@ -1784,16 +1765,41 @@ const handleSingleAction = async () => {
   }
 };
 
-const copySingleResult = () => {
+const copyByExecCommand = (text) => {
+  if (typeof document === "undefined") return false;
+  const textArea = document.createElement("textarea");
+  textArea.value = text;
+  textArea.setAttribute("readonly", "readonly");
+  textArea.style.position = "absolute";
+  textArea.style.left = "-9999px";
+  document.body.appendChild(textArea);
+  textArea.select();
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textArea);
+  return copied;
+};
+
+const copySingleResult = async () => {
   if (!singleResult.value || singleResult.value.error) return;
   const text = singleResult.value.display;
-  navigator.clipboard.writeText(text).then(() => {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else if (!copyByExecCommand(text)) {
+      throw new Error("copy_failed");
+    }
     toastMessage.value = "已复制到剪切板";
     showToast.value = true;
     setTimeout(() => {
       showToast.value = false;
     }, 2000);
-  });
+  } catch (_error) {
+    toastMessage.value = "复制失败，请手动复制";
+    showToast.value = true;
+    setTimeout(() => {
+      showToast.value = false;
+    }, 2000);
+  }
 };
 
 const handleStart = () => {
@@ -2206,49 +2212,6 @@ watch(hereGeocodeApiKey, (value) => {
   }
   if (provider.value === "here") {
     providerApiKey.value = value || "";
-  }
-});
-
-watch(customAppId, (value) => {
-  customToken.value = "";
-  if (value) {
-    localStorage.setItem(storageKeys.customAppId, value);
-  } else {
-    localStorage.removeItem(storageKeys.customAppId);
-  }
-});
-
-watch(customCredential, (value) => {
-  customToken.value = "";
-  if (value) {
-    localStorage.setItem(storageKeys.customCredential, value);
-  } else {
-    localStorage.removeItem(storageKeys.customCredential);
-  }
-});
-
-watch(customTokenUrl, (value) => {
-  customToken.value = "";
-  if (value) {
-    localStorage.setItem(storageKeys.customTokenUrl, value);
-  } else {
-    localStorage.removeItem(storageKeys.customTokenUrl);
-  }
-});
-
-watch(customGeocodeUrl, (value) => {
-  if (value) {
-    localStorage.setItem(storageKeys.customGeocodeUrl, value);
-  } else {
-    localStorage.removeItem(storageKeys.customGeocodeUrl);
-  }
-});
-
-watch(customRouteUrl, (value) => {
-  if (value) {
-    localStorage.setItem(storageKeys.customRouteUrl, value);
-  } else {
-    localStorage.removeItem(storageKeys.customRouteUrl);
   }
 });
 
