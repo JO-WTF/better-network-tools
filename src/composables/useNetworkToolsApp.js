@@ -109,7 +109,7 @@ const loadInitialState = () => {
     providerApiKey.value =
       provider.value === "mapbox" ? mapboxGeocodeApiKey.value : hereGeocodeApiKey.value;
   }
-  if (provider.value === "custom" && mode.value !== "route") {
+  if (provider.value === "custom" && mode.value === "reverse") {
     provider.value = "mapbox";
     providerApiKey.value = mapboxGeocodeApiKey.value;
   }
@@ -409,10 +409,13 @@ const canStart = computed(() => {
     return false;
   }
   if (provider.value === "custom") {
-    if (mode.value !== "route") {
+    if (mode.value === "route") {
+      return Boolean(customWebSocketUrl.value && startColumnName.value && endColumnName.value);
+    }
+    if (mode.value === "reverse") {
       return false;
     }
-    return Boolean(customWebSocketUrl.value && startColumnName.value && endColumnName.value);
+    return Boolean(columnName.value);
   }
   if (!providerApiKey.value) {
     return false;
@@ -676,6 +679,13 @@ const triggerDropzoneFlash = () => {
   });
 };
 
+const clearGeocodeOutputColumns = () => {
+  rows.value.forEach((row) => {
+    row.纬度 = "";
+    row.经度 = "";
+  });
+};
+
 const triggerMockAnimation = () => {
   mockAnimating.value = false;
   requestAnimationFrame(() => {
@@ -790,6 +800,7 @@ const startCustomGeocode = () => {
   geocodeState.running = true;
   geocodeState.processed = 0;
   geocodeState.current = "";
+  clearGeocodeOutputColumns();
 
   const addressMap = buildAddressMap();
   const addresses = Array.from(addressMap.keys());
@@ -845,7 +856,9 @@ const startCustomGeocode = () => {
       const payload = message.payload || {};
       const address = payload.address || "-";
       geocodeState.current = address;
-      if (!Number.isFinite(payload.processed)) {
+      if (Number.isFinite(payload.processed)) {
+        geocodeState.processed = payload.processed;
+      } else {
         geocodeState.processed += 1;
       }
 
@@ -1288,6 +1301,7 @@ const startGeocode = async () => {
   geocodeState.running = true;
   geocodeState.processed = 0;
   geocodeState.current = "";
+  clearGeocodeOutputColumns();
 
   const addressMap = buildAddressMap();
   geocodeState.total = addressMap.size;
@@ -2286,7 +2300,7 @@ watch(mapRealtimeUpdate, (value, oldValue) => {
 
 watch(mode, (value) => {
   localStorage.setItem(storageKeys.mode, value);
-  if (value !== "route" && provider.value === "custom") {
+  if (value === "reverse" && provider.value === "custom") {
     provider.value = "mapbox";
   }
 
