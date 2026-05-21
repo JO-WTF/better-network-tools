@@ -856,7 +856,9 @@ const startCustomGeocode = () => {
       const payload = message.payload || {};
       const address = payload.address || "-";
       geocodeState.current = address;
-      if (!Number.isFinite(payload.processed)) {
+      if (Number.isFinite(payload.processed)) {
+        geocodeState.processed = payload.processed;
+      } else {
         geocodeState.processed += 1;
       }
 
