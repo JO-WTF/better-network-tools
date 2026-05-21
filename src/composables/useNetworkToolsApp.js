@@ -109,7 +109,7 @@ const loadInitialState = () => {
     providerApiKey.value =
       provider.value === "mapbox" ? mapboxGeocodeApiKey.value : hereGeocodeApiKey.value;
   }
-  if (provider.value === "custom" && mode.value !== "route") {
+  if (provider.value === "custom" && mode.value === "reverse") {
     provider.value = "mapbox";
     providerApiKey.value = mapboxGeocodeApiKey.value;
   }
@@ -409,10 +409,13 @@ const canStart = computed(() => {
     return false;
   }
   if (provider.value === "custom") {
-    if (mode.value !== "route") {
+    if (mode.value === "route") {
+      return Boolean(customWebSocketUrl.value && startColumnName.value && endColumnName.value);
+    }
+    if (mode.value === "reverse") {
       return false;
     }
-    return Boolean(customWebSocketUrl.value && startColumnName.value && endColumnName.value);
+    return Boolean(columnName.value);
   }
   if (!providerApiKey.value) {
     return false;
@@ -2286,7 +2289,7 @@ watch(mapRealtimeUpdate, (value, oldValue) => {
 
 watch(mode, (value) => {
   localStorage.setItem(storageKeys.mode, value);
-  if (value !== "route" && provider.value === "custom") {
+  if (value === "reverse" && provider.value === "custom") {
     provider.value = "mapbox";
   }
 
