@@ -1,4 +1,4 @@
-const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+const protocol = 'ws';
 const host = window.location.hostname || 'localhost';
 
 export const appConfig = {
