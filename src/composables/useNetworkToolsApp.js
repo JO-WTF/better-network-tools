@@ -679,6 +679,13 @@ const triggerDropzoneFlash = () => {
   });
 };
 
+const clearGeocodeOutputColumns = () => {
+  rows.value.forEach((row) => {
+    row.纬度 = "";
+    row.经度 = "";
+  });
+};
+
 const triggerMockAnimation = () => {
   mockAnimating.value = false;
   requestAnimationFrame(() => {
@@ -793,6 +800,7 @@ const startCustomGeocode = () => {
   geocodeState.running = true;
   geocodeState.processed = 0;
   geocodeState.current = "";
+  clearGeocodeOutputColumns();
 
   const addressMap = buildAddressMap();
   const addresses = Array.from(addressMap.keys());
@@ -1291,6 +1299,7 @@ const startGeocode = async () => {
   geocodeState.running = true;
   geocodeState.processed = 0;
   geocodeState.current = "";
+  clearGeocodeOutputColumns();
 
   const addressMap = buildAddressMap();
   geocodeState.total = addressMap.size;
