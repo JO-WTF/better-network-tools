@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "data": {
+    "mapboxGeocodeApiKey": "your-mapbox-geocoding-key",
+    "hereGeocodeApiKey": "your-here-geocoding-key",
+    "customAppId": "your-app-id",
+    "customCredential": "your-credential",
+    "customTokenUrl": "https://geo.example.com/token",
+    "customGeocodeUrl": "https://geo.example.com/geocode",
+    "customRouteUrl": "https://geo.example.com/route",
+    "customWebSocketUrl": "ws://localhost:8765",
+    "mapApiKey": "your-mapbox-map-key",
+    "matrixMaxSize": 10,
+    "matrixMinDensity": 0.5,
+    "matrixMinValidEdges": 6,
+    "matrixScoreMode": "valid_x_density",
+    "matrixTopDestinationSeedCount": 300,
+    "matrixEnableSignatureCandidates": true,
+    "matrixEnableSignatureMerge": true,
+    "matrixMaxSignatureMergeGroups": 2
+  }
+}

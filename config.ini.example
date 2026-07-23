@@ -1,0 +1,7 @@
+[custom]
+app_id = your-app-id
+credential = your-credential
+token_url = https://geo.example.com/token
+geocode_url = https://geo.example.com/geocode
+reverse_geocode_url = https://geo.example.com/reverse-geocode
+route_url = https://geo.example.com/route

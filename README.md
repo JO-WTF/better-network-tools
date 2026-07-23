@@ -25,13 +25,15 @@ View your app in AI Studio: https://ai.studio/apps/15d643b5-564b-4fee-91af-4f0dc
 后端在 `server/` 目录下，快速启动：
 
 ```bash
+cp config.ini.example config.ini
+# 编辑 config.ini，填入本地凭证和服务地址
 python -m server.app
 ```
 
 更完整的后端启动说明见：`server/README.md`。
 
 
-本地文件调试可直接运行：`python debug_route_matrix.py`（读取 `config.json`）。
+本地文件调试前可执行 `cp config.json.example config.json` 并填写本地配置，随后运行 `python debug_route_matrix.py`。
 
 
 ### 前端启动常见错误

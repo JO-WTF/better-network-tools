@@ -17,6 +17,8 @@ pip install -r requirements.txt
 在仓库根目录执行（推荐）：
 
 ```bash
+cp config.ini.example config.ini
+# 编辑 config.ini，填入本地凭证和服务地址
 python -m server.app
 ```
 
@@ -52,7 +54,7 @@ python debug_route_matrix.py
 ```
 
 说明：
-- 仍保留 `config.json` 读取设计，需在 `CONFIG_FILE` 指向的文件中提供：`data.customAppId`、`data.customCredential`、`data.customTokenUrl`、`data.customRouteUrl`、`data.customGeocodeUrl`。
+- 可先复制 `config.json.example` 为 `config.json`。`CONFIG_FILE` 指向的文件需提供：`data.customAppId`、`data.customCredential`、`data.customTokenUrl`、`data.customRouteUrl`、`data.customGeocodeUrl`。
 - `OUTPUT_FILE` 为空时，自动输出为与输入同目录的 `calculated_<输入文件名>`。
 - 支持 `.csv` / `.xlsx` / `.xls` 输入与输出。
 - 输出文件会追加 `导航距离(km)`、`导航时间(min)`，失败时附带错误列。
