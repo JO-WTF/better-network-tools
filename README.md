@@ -10,14 +10,14 @@ View your app in AI Studio: https://ai.studio/apps/15d643b5-564b-4fee-91af-4f0dc
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
+**Prerequisites:** Node.js、Corepack
 
 
 1. Install dependencies:
-   `npm install`
+   `corepack pnpm install --frozen-lockfile`
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
-   `npm run dev`
+   `corepack pnpm dev`
 
 
 ## Backend 启动
@@ -36,17 +36,16 @@ python -m server.app
 
 ### 前端启动常见错误
 
-若执行 `npm run dev` 出现：`Cannot find package 'vite'`，说明前端依赖未正确安装。
+若执行 `corepack pnpm dev` 出现 `Cannot find package 'vite'`，说明前端依赖未正确安装。
 
 请在仓库根目录执行：
 
 ```bash
-npm install
+corepack pnpm install --frozen-lockfile
 ```
 
-若仍报错，再执行：
+若仍报错，可强制重新建立依赖链接：
 
 ```bash
-rm -rf node_modules package-lock.json
-npm install
+corepack pnpm install --force
 ```
