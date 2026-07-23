@@ -8,3 +8,4 @@ class CustomProviderConfig:
     token_url: str = "getResAppDynamicToken"
     geocode_url: str = "geographicSearch"
     route_url: str = "routeSearch"
+    reverse_geocode_url: str = ""

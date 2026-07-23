@@ -26,6 +26,7 @@ class WebSocketHandler:
                 "credential": self.custom_config.credential,
                 "tokenUrl": self.custom_config.token_url,
                 "geocodeUrl": self.custom_config.geocode_url,
+                "reverseGeocodeUrl": self.custom_config.reverse_geocode_url,
                 "routeUrl": self.custom_config.route_url,
             }
         return dict(request_config or {})

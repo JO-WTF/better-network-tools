@@ -25,6 +25,7 @@ def _load_custom_from_ini(config_path: Path) -> CustomProviderConfig:
         token_url=section.get("token_url", "getResAppDynamicToken"),
         geocode_url=section.get("geocode_url", "geographicSearch"),
         route_url=section.get("route_url", "routeSearch"),
+        reverse_geocode_url=section.get("reverse_geocode_url", ""),
     )
 
 
